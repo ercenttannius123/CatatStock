@@ -10,10 +10,16 @@ export default function App(){
   const [toast, setToast] = useState('')
   const trendRef = useRef(null)
   const roiRef = useRef(null)
+  const trendChartRef = useRef(null)
+  const roiChartRef = useRef(null)
 
   useEffect(() => {
     if (trendRef.current) {
-      new Chart(trendRef.current, {
+      if (trendChartRef.current) {
+        try { trendChartRef.current.destroy() } catch(e){}
+        trendChartRef.current = null
+      }
+      trendChartRef.current = new Chart(trendRef.current, {
         type: 'line',
         data: {
           labels: ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'],
@@ -46,7 +52,11 @@ export default function App(){
     }
 
     if (roiRef.current) {
-      new Chart(roiRef.current, {
+      if (roiChartRef.current) {
+        try { roiChartRef.current.destroy() } catch(e){}
+        roiChartRef.current = null
+      }
+      roiChartRef.current = new Chart(roiRef.current, {
         type: 'bar',
         data: {
           labels: ['Minuman','Sembako','Snack','Kebersihan'],
@@ -69,6 +79,20 @@ export default function App(){
           }
         }
       })
+    }
+  }, [])
+
+  // cleanup charts on unmount
+  useEffect(() => {
+    return () => {
+      if (trendChartRef.current) {
+        try { trendChartRef.current.destroy() } catch(e){}
+        trendChartRef.current = null
+      }
+      if (roiChartRef.current) {
+        try { roiChartRef.current.destroy() } catch(e){}
+        roiChartRef.current = null
+      }
     }
   }, [])
 
