@@ -1,35 +1,36 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Chart, registerables } from 'chart.js'
-import { ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, Legend, Bar } from 'recharts'
+import { ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, CartesianGrid, Bar, Legend } from 'recharts'
 import AuthPage from './AuthPage'
 Chart.register(...registerables)
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const pages = ['dashboard','stok','prediksi','restock','slowmoving','cashflow','input','umkm']
 
 export default function App(){
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    localStorage.getItem("isLoggedIn") === "true"
+  )
   const [page, setPage] = useState('dashboard')
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      const u = localStorage.getItem('authUser')
+      return u ? JSON.parse(u) : null
+    } catch (e) {
+      return null
+    }
+  })
   const [umkmMode, setUmkmMode] = useState(false)
   const [toast, setToast] = useState('')
-  const [isDarkMode, setIsDarkMode] = useState(true)
+  const [isDarkMode, setIsDarkMode] = useState(false)
   const [salesTab, setSalesTab] = useState('day')
   const [topProductsTab, setTopProductsTab] = useState('day')
   const trendRef = useRef(null)
   const roiRef = useRef(null)
   const trendChartRef = useRef(null)
   const roiChartRef = useRef(null)
-  const [products, setProducts] = useState([
-    { id: 'P001', name: 'Susu UHT 1L', category: 'Minuman', image: '🥛', price: 8500, stock: 12, value: 102000 },
-    { id: 'P002', name: 'Minyak Goreng 2L', category: 'Sembako', image: '🍳', price: 28000, stock: 22, value: 616000 },
-    { id: 'P003', name: 'Cokelat Batang 100g', category: 'Snack', image: '🍫', price: 12000, stock: 9, value: 108000 },
-    { id: 'P004', name: 'Beras 5kg', category: 'Sembako', image: '🌾', price: 65000, stock: 145, value: 9425000 },
-    { id: 'P005', name: 'Sabun Mandi', category: 'Kebersihan', image: '🧼', price: 5500, stock: 87, value: 478500 },
-    { id: 'P006', name: 'Kopi Sachet 20s', category: 'Minuman', image: '☕', price: 24000, stock: 45, value: 1080000 },
-    { id: 'P007', name: 'Deterjen 1kg', category: 'Kebersihan', image: '🧺', price: 18000, stock: 34, value: 612000 },
-    { id: 'P008', name: 'Gula Pasir 1kg', category: 'Sembako', image: '🧂', price: 15000, stock: 60, value: 900000 },
-    { id: 'P009', name: 'Sirup Rasa Jeruk', category: 'Minuman', image: '🍊', price: 15000, stock: 18, value: 270000 },
-    { id: 'P010', name: 'Tisu Wajah 100s', category: 'Rumah Tangga', image: '🧻', price: 8000, stock: 24, value: 192000 }
-  ])
+  const [products, setProducts] = useState([])
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -38,138 +39,106 @@ export default function App(){
   const [showRestockModal, setShowRestockModal] = useState(false)
   const [restockProduct, setRestockProduct] = useState('')
   const [restockQuantity, setRestockQuantity] = useState(0)
-
-  const profitSummary = {
-    totalProfit: 'Rp 3.450.000',
-    averageMargin: '27%'
-  }
+  const [aiPrediction, setAiPrediction] = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState(null)
+  const [prediksiKategori, setPrediksiKategori] = useState('')
 
   const cashflowData = {
     cashIn: 'Rp 8.200.000',
     cashOut: 'Rp 4.750.000',
     net: 'Rp 3.450.000'
   }
+  
 
+  useEffect(()=>{
+    if (!isLoggedIn) { setProducts([]); return }
+    let cancelled = false
+    async function fetchProducts() {
+      try {
+        const res = await fetch(`${API_URL}/products`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+        })
+        if (!res.ok) {
+          console.error('Failed loading products', res.status)
+          return
+        }
+        const data = await res.json()
+        if (cancelled) return
+        const mapped = (Array.isArray(data) ? data : []).map(p => ({
+          id: p.id ? `P${String(p.id).padStart(3,'0')}` : p.id,
+          rawId: p.id,
+          name: p.name,
+          category: p.category || 'Lainnya',
+          image: p.image_emoji || '',
+          price: Math.round(p.price_buy) || 0,
+          stock: p.stock || 0,
+          value: (Math.round(p.price_buy) || 0) * (p.stock || 0)
+        }))
+        setProducts(mapped)
+      } catch (e) {
+        console.error('Error loading products', e)
+      }
+    }
+    fetchProducts()
+    return () => { cancelled = true }
+  }, [isLoggedIn])
+
+  // Derived dashboard metrics from products
+  const totalProductsCount = products.length
+  const criticalProducts = products.filter(p => typeof p.stock === 'number' && p.stock <= 10)
+  const criticalCount = criticalProducts.length
+  const slowMovingProducts = products.filter(p => typeof p.stock === 'number' && p.stock >= 50)
+  const slowMovingCount = slowMovingProducts.length
+  const totalStockValue = products.reduce((s, p) => s + ((p.price || p.price === 0 ? p.price : 0) * (p.stock || 0)), 0)
+  const lowStockList = products.slice().sort((a,b)=> (a.stock||0) - (b.stock||0)).slice(0,3)
+
+  // Derived dashboard/calculation values that depend on products/totalStockValue
   const umkmSummary = {
-    lowStock: ['Susu UHT 1L', 'Cokelat Batang 100g'],
-    slowMoving: ['Kopi Sachet 20s']
+    lowStock: lowStockList.map(p=>p.name),
+    slowMoving: products.filter(p=> (p.daysNotSold||0) > 30).map(p=>p.name)
   }
 
-  const umkmWarnings = [
-    'Susu UHT 1L akan habis dalam 2 hari',
-    'Stok snack mulai menipis'
-  ]
+  const umkmWarnings = lowStockList.map(p=>`${p.name} akan habis dalam ${Math.max(1, Math.round((p.stock||0)/Math.max(1,5)))} hari`)
 
-  const umkmRecommendations = [
-    'Restock susu UHT minimal 50 unit',
-    'Kurangi pembelian kopi sachet'
-  ]
+  const umkmRecommendations = lowStockList.map(p=>`Restock ${p.name} minimal ${Math.max(10, 50 - (p.stock||0))} unit`)
 
   const umkmCashflow = {
-    cashIn: 'Rp 2.500.000',
-    cashOut: 'Rp 1.200.000',
-    profitToday: 'Rp 1.300.000'
+    cashIn: `Rp ${Math.round(totalStockValue * 0.4).toLocaleString()}`,
+    cashOut: `Rp ${Math.round(totalStockValue * 0.3).toLocaleString()}`,
+    profitToday: `Rp ${Math.round(totalStockValue * 0.1).toLocaleString()}`
   }
 
-  const topProducts = [
-    { name: 'Minyak Goreng 2L', profit: 'Rp 1.200.000' },
-    { name: 'Beras 5kg', profit: 'Rp 950.000' },
-    { name: 'Gula 1kg', profit: 'Rp 520.000' },
-    { name: 'Mie Instan Box', profit: 'Rp 380.000' }
-  ]
+  // Top products by stock value
+  const topProducts = products.slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,4).map(p=>({
+    name: p.name,
+    profit: `Rp ${Math.round((p.value||0) * 0.2).toLocaleString()}`
+  }))
 
-  const profitChart = [
-    { name: 'Minyak', percent: 40 },
-    { name: 'Beras', percent: 30 },
-    { name: 'Gula', percent: 20 },
-    { name: 'Snack', percent: 10 }
-  ]
+  // category distribution (for profit/ROI charts)
+  const categorySums = {}
+  products.forEach(p=>{ const k = p.category || 'Lainnya'; categorySums[k] = (categorySums[k]||0) + (p.value||0) })
+  const totalForCats = Object.values(categorySums).reduce((s,v)=>s+v,0) || 1
+  const profitChart = Object.entries(categorySums).map(([name,val])=>({ name, percent: Math.round(val / totalForCats * 100) }))
+  const roiData = profitChart
 
-  const roiData = [
-    { name: 'Minyak', percent: 40 },
-    { name: 'Beras', percent: 30 },
-    { name: 'Gula', percent: 20 },
-    { name: 'Snack', percent: 10 }
-  ]
+  const modalData = products.slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,4).map(p=>({ name: p.name, value: `Rp ${Math.round(p.value||0).toLocaleString()}`, percent: Math.round(((p.value||0)/ (totalForCats||1)) * 100) }))
 
-  const modalData = [
-    { name: 'Beras 5kg', value: 'Rp 9,4jt', percent: 80 },
-    { name: 'Minyak 2L', value: 'Rp 5,2jt', percent: 55 },
-    { name: 'Gula 1kg', value: 'Rp 3,1jt', percent: 35 },
-    { name: 'Mie Instan', value: 'Rp 2jt', percent: 20 }
-  ]
+  const cashflowChart = [] // placeholder if needed later
 
-  const cashflowChart = [
-    { month: 'Jan', in: 3200000, out: 2100000 },
-    { month: 'Feb', in: 2800000, out: 2500000 },
-    { month: 'Mar', in: 4100000, out: 3000000 },
-    { month: 'Apr', in: 3700000, out: 2900000 },
-    { month: 'Mei', in: 4500000, out: 3100000 }
-  ]
-
-  const salesData = {
-    day: [12, 18, 10, 25, 30],
-    week: [120, 150, 180, 200],
-    month: [400, 600, 550, 700],
-    year: [5000, 7000, 6500]
-  }
+  const salesData = { day: [], week: [], month: [], year: [] }
 
   const topProductsData = {
-    day: [{name:'Minyak', value:20}, {name:'Beras', value:15}],
-    week: [{name:'Minyak', value:140}, {name:'Beras', value:120}],
-    month: [{name:'Minyak', value:600}, {name:'Beras', value:550}],
-    year: [{name:'Minyak', value:7000}, {name:'Beras', value:6500}]
+    day: topProducts.map(tp => ({ name: tp.name, value: Math.max(1, Math.round((products.find(p=>p.name===tp.name)?.value||0)/1000)) })),
+    week: topProducts.map(tp => ({ name: tp.name, value: Math.max(1, Math.round((products.find(p=>p.name===tp.name)?.value||0)/1000) * 7) })),
+    month: topProducts.map(tp => ({ name: tp.name, value: Math.max(1, Math.round((products.find(p=>p.name===tp.name)?.value||0)/1000) * 30) })),
+    year: topProducts.map(tp => ({ name: tp.name, value: Math.max(1, Math.round((products.find(p=>p.name===tp.name)?.value||0)/1000) * 365) }))
   }
 
-  const safeMap = (array) => Array.isArray(array) ? array : []
-
-  // Initialize theme from localStorage
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme) {
-      const isDark = savedTheme === 'dark'
-      setIsDarkMode(isDark)
-      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
-    } else {
-      document.documentElement.setAttribute('data-theme', 'dark')
-    }
-  }, [])
-
-  // Apply theme changes
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
-    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light')
-  }, [isDarkMode])
-
-  // Initialize charts
-  useEffect(() => {
-    if (roiRef.current) {
-      const ctx = roiRef.current.getContext('2d')
-      const roiChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: ['Minuman', 'Sembako', 'Snack', 'Kebersihan', 'Rumah Tangga'],
-          datasets: [{
-            label: 'ROI (%)',
-            data: [15, 20, 10, 8, 12],
-            backgroundColor: '#1D9E75',
-            borderColor: '#1D9E75',
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true
-            }
-          }
-        }
-      })
-      return () => roiChart.destroy()
-    }
-  }, [])
+  const profitSummary = {
+    totalProfit: `Rp ${Math.round(totalStockValue * 0.2).toLocaleString()}`,
+    averageMargin: '20%'
+  }
 
   useEffect(()=>{
     if (!toast) return
@@ -192,7 +161,11 @@ export default function App(){
   }
 
   function handleSignOut() {
+    localStorage.removeItem("isLoggedIn")
+    localStorage.removeItem('authUser')
     setIsLoggedIn(false)
+    setAuthUser(null)
+    setProducts([])
     setPage('dashboard')
     showToast('Berhasil keluar dari aplikasi')
   }
@@ -216,24 +189,163 @@ export default function App(){
     return { text: 'Aman', class: 'bs' }
   }
 
-  function addProduct(product) {
-    const newId = 'P' + String(products.length + 1).padStart(3, '0')
-    const newProduct = {
-      id: newId,
-      ...product,
-      value: product.price * product.stock
+  // Safe map helper: ensures we can call .map on possibly undefined values
+  function safeMap(v) {
+    if (!v) return []
+    return Array.isArray(v) ? v : []
+  }
+
+  // Fetch products from backend and set state
+  async function fetchProducts() {
+    try {
+      const res = await fetch(`${API_URL}/products`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+      })
+      if (!res.ok) {
+        console.error('Failed loading products', res.status)
+        return
+      }
+      const data = await res.json()
+      const mapped = (Array.isArray(data) ? data : []).map(p => ({
+        id: p.id ? `P${String(p.id).padStart(3,'0')}` : p.id,
+        rawId: p.id,
+        name: p.name,
+        category: p.category || 'Lainnya',
+        image: p.image_emoji || '',
+        price: Math.round(p.price_buy) || 0,
+        stock: p.stock || 0,
+        value: (Math.round(p.price_buy) || 0) * (p.stock || 0)
+      }))
+      setProducts(mapped)
+    } catch (e) {
+      console.error('Error loading products', e)
     }
-    setProducts([...products, newProduct])
-    setShowAddModal(false)
-    showToast('Produk berhasil ditambahkan!')
+  }
+
+  async function requestPrediction(kategori) {
+    try {
+      setAiError(null)
+      setAiLoading(true)
+      setAiPrediction(null)
+      const body = { kategori: (kategori || prediksiKategori || 'BEVERAGES') }
+      const res = await fetch(`${API_URL}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`${res.status} ${text}`)
+      }
+      const data = await res.json()
+      setAiPrediction(data.prediksi)
+      setAiLoading(false)
+    } catch (e) {
+      console.error('AI predict error', e)
+      setAiError(e.message || String(e))
+      setAiLoading(false)
+    }
+  }
+
+  function addProduct(product) {
+    ;(async ()=>{
+      try {
+        const body = {
+          name: product.name,
+          category: product.category,
+          image_emoji: product.image,
+          price_buy: product.price,
+          stock: product.stock,
+          product_code: product.product_code || null
+        }
+        const res = await fetch(`${API_URL}/products`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+          body: JSON.stringify(body)
+        })
+        if (res.ok) {
+          await fetchProducts()
+          showToast('Produk berhasil ditambahkan (server)')
+        } else {
+          // fallback to local add
+          const newId = 'P' + String(products.length + 1).padStart(3, '0')
+          const newProduct = { id: newId, ...product, value: product.price * product.stock }
+          setProducts(prev => [...prev, newProduct])
+          showToast('Produk ditambahkan secara lokal (server gagal)')
+        }
+      } catch (e) {
+        console.error('Add product error', e)
+        showToast('Gagal menambahkan produk')
+      } finally {
+        setShowAddModal(false)
+      }
+    })()
   }
 
   function editProduct(product) {
-    const updated = products.map(p => p.id === product.id ? { ...product, value: product.price * product.stock } : p)
-    setProducts(updated)
-    setShowEditModal(false)
-    setEditingProduct(null)
-    showToast('Produk berhasil diupdate!')
+    ;(async ()=>{
+      try {
+        // try PUT to backend if rawId exists
+        const rawId = product.rawId || null
+        if (rawId) {
+          const res = await fetch(`${API_URL}/products/${rawId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+            body: JSON.stringify({ name: product.name, category: product.category, image_emoji: product.image, price_buy: product.price, stock: product.stock })
+          })
+          if (res.ok) {
+            await fetchProducts()
+            showToast('Produk berhasil diupdate (server)')
+          } else {
+            // fallback local
+            const updated = products.map(p => p.id === product.id ? { ...product, value: product.price * product.stock } : p)
+            setProducts(updated)
+            showToast('Produk diupdate lokal (server tidak mendukung)')
+          }
+        } else {
+          const updated = products.map(p => p.id === product.id ? { ...product, value: product.price * product.stock } : p)
+          setProducts(updated)
+          showToast('Produk diupdate lokal')
+        }
+      } catch (e) {
+        console.error('Edit product error', e)
+        showToast('Gagal update produk')
+      } finally {
+        setShowEditModal(false)
+        setEditingProduct(null)
+      }
+    })()
+  }
+
+  function deleteProduct(product) {
+    ;(async ()=>{
+      try {
+        if (!product) return
+        const rawId = product.rawId || null
+        if (rawId) {
+          const res = await fetch(`${API_URL}/products/${rawId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+          })
+          if (res.ok) {
+            await fetchProducts()
+            showToast('Produk dihapus (server)')
+          } else {
+            setProducts(prev => prev.filter(p => p.id !== product.id))
+            showToast('Produk dihapus secara lokal (server gagal)')
+          }
+        } else {
+          setProducts(prev => prev.filter(p => p.id !== product.id))
+          showToast('Produk dihapus secara lokal')
+        }
+      } catch (e) {
+        console.error('Delete product error', e)
+        showToast('Gagal menghapus produk')
+      } finally {
+        setShowEditModal(false)
+        setEditingProduct(null)
+      }
+    })()
   }
 
   function openEditModal(product) {
@@ -252,28 +364,57 @@ export default function App(){
   }
 
   function confirmRestock() {
-    const updated = products.map(p => 
-      p.name === restockProduct ? { ...p, stock: p.stock + restockQuantity, value: p.price * (p.stock + restockQuantity) } : p
-    )
-    setProducts(updated)
-    setShowRestockModal(false)
-    setRestockProduct('')
-    setRestockQuantity(0)
-    showToast(`Restock ${restockProduct} berhasil!`)
+    ;(async ()=>{
+      try {
+        const prod = products.find(p => p.name === restockProduct)
+        if (!prod) { showToast('Produk tidak ditemukan'); return }
+        const rawId = prod.rawId || null
+        if (rawId) {
+          const newStock = (prod.stock || 0) + restockQuantity
+          const res = await fetch(`${API_URL}/products/${rawId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+            body: JSON.stringify({ stock: newStock })
+          })
+          if (res.ok) {
+            await fetchProducts()
+            showToast(`Restock ${restockProduct} berhasil (server)`)
+          } else {
+            // fallback local
+            const updated = products.map(p => p.name === restockProduct ? { ...p, stock: p.stock + restockQuantity, value: p.price * (p.stock + restockQuantity) } : p)
+            setProducts(updated)
+            showToast(`Restock ${restockProduct} berhasil (lokal)`)
+          }
+        } else {
+          const updated = products.map(p => p.name === restockProduct ? { ...p, stock: p.stock + restockQuantity, value: p.price * (p.stock + restockQuantity) } : p)
+          setProducts(updated)
+          showToast(`Restock ${restockProduct} berhasil (lokal)`)
+        }
+      } catch (e) {
+        console.error('Restock error', e)
+        showToast('Gagal restock')
+      } finally {
+        setShowRestockModal(false)
+        setRestockProduct('')
+        setRestockQuantity(0)
+      }
+    })()
   }
 
-  function ProductForm({ product, onSubmit, onCancel }) {
+  function ProductForm({ product, onSubmit, onCancel, onDelete }) {
     const [formData, setFormData] = useState(product ? {
       id: product.id,
       name: product.name,
       category: product.category,
       image: product.image,
+      product_code: product.product_code || '',
       price: product.price,
       stock: product.stock
     } : {
       name: '',
       category: 'Minuman',
-      image: '📦',
+      image: '',
+      product_code: '',
       price: 0,
       stock: 0
     })
@@ -283,52 +424,101 @@ export default function App(){
       onSubmit(formData)
     }
 
+    const handleFileChange = (e) => {
+      const file = e.target.files && e.target.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => setFormData(prev => ({ ...prev, image: reader.result }))
+      reader.readAsDataURL(file)
+    }
+
+    const hasImage = formData.image && formData.image.trim() !== ''
+    const totalValue = formData.price * formData.stock
+
     return (
-      <form onSubmit={handleSubmit} style={{padding:20}}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15,marginBottom:20}}>
-          <div>
-            <label style={{display:'block',fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Nama Produk</label>
-            <input type="text" value={formData.name} onChange={(e)=>setFormData({...formData, name: e.target.value})} required style={{width:'100%'}} />
+      <form onSubmit={handleSubmit}>
+        <div className="product-section">
+          <div className="product-upload-area">
+            {hasImage ? (
+              (formData.image.startsWith && (formData.image.startsWith('http') || formData.image.startsWith('data:image'))) ? (
+                <img src={formData.image} alt="Preview" className="product-image-preview" />
+              ) : (
+                <div style={{fontSize:'120px'}}>{formData.image}</div>
+              )
+            ) : (
+              <>
+                <div className="product-upload-icon">📷</div>
+                <h3 className="product-upload-text">Upload Foto Produk</h3>
+                <p className="product-upload-subtitle">PNG, JPG atau URL gambar</p>
+              </>
+            )}
+
+            <input type="file" accept="image/*" id="product-upload" style={{display:'block',marginTop:12}} onChange={handleFileChange} />
+
+            <h4 className="product-section-title">Informasi Produk</h4>
+
+            <div className="product-field">
+              <label className="product-field-label">Nama Produk</label>
+              <input className="product-field-input" value={formData.name} onChange={e=>setFormData({...formData, name:e.target.value})} required />
+            </div>
+
+            <div className="product-field">
+              <label className="product-field-label">Kategori</label>
+              <input className="product-field-input" value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})} />
+            </div>
+
+            <div className="product-field">
+              <label className="product-field-label">Kode Produk</label>
+              <input className="product-field-input" value={formData.product_code} onChange={e=>setFormData({...formData, product_code:e.target.value})} />
+            </div>
+
+            <div className="product-field">
+              <label className="product-field-label">Harga Beli</label>
+              <input type="number" className="product-field-input" value={formData.price} onChange={e=>setFormData({...formData, price:parseInt(e.target.value)||0})} required />
+            </div>
+
+            <div className="product-field">
+              <label className="product-field-label">Stok</label>
+              <input type="number" className="product-field-input" value={formData.stock} onChange={e=>setFormData({...formData, stock:parseInt(e.target.value)||0})} required />
+            </div>
+
           </div>
-          <div>
-            <label style={{display:'block',fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Kategori</label>
-            <select value={formData.category} onChange={(e)=>setFormData({...formData, category: e.target.value})} style={{width:'100%'}}>
-              <option>Minuman</option>
-              <option>Sembako</option>
-              <option>Snack</option>
-              <option>Kebersihan</option>
-              <option>Rumah Tangga</option>
-            </select>
-          </div>
-          <div>
-            <label style={{display:'block',fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Gambar (Emoji)</label>
-            <input type="text" value={formData.image} onChange={(e)=>setFormData({...formData, image: e.target.value})} style={{width:'100%'}} />
-          </div>
-          <div>
-            <label style={{display:'block',fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Harga Beli</label>
-            <input type="number" value={formData.price} onChange={(e)=>setFormData({...formData, price: parseInt(e.target.value)||0})} required style={{width:'100%'}} />
-          </div>
-          <div>
-            <label style={{display:'block',fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Stok</label>
-            <input type="number" value={formData.stock} onChange={(e)=>setFormData({...formData, stock: parseInt(e.target.value)||0})} required style={{width:'100%'}} />
-          </div>
-          <div>
-            <label style={{display:'block',fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Nilai Stok (Auto)</label>
-            <input type="text" value={`Rp ${(formData.price * formData.stock).toLocaleString()}`} readOnly style={{width:'100%',background:'var(--bg2)'}} />
+
+          <div className="product-field-group">
+            <div className="product-summary-card">
+              <div className="product-summary-title">Total Nilai Stok</div>
+              <div className="product-summary-value">Rp {totalValue.toLocaleString()}</div>
+            </div>
           </div>
         </div>
-        <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-          <button type="button" className="btn" onClick={onCancel}>Batal</button>
-          <button type="submit" className="btn btn-primary">Simpan</button>
+
+        <div className="product-footer">
+          {product && (
+            <button type="button" className="btn product-add-btn" style={{marginRight:8, background:'#ef4444', color:'#fff', border: '1px solid #ef4444'}} onClick={()=>{ if (window.confirm('Yakin ingin menghapus produk ini?')) { onDelete && onDelete() } }}>
+              Hapus Produk
+            </button>
+          )}
+          <button type="button" className="btn-product-cancel" onClick={onCancel}>Batal</button>
+          <button type="submit" className="btn-product-save">+ Simpan Produk</button>
         </div>
       </form>
     )
   }
-
   if (!isLoggedIn) {
-    return <AuthPage onLogin={() => {
-      setIsLoggedIn(true);
+    return <AuthPage onLogin={(user) => {
+      localStorage.setItem("isLoggedIn", "true")
+      setIsLoggedIn(true)
       setPage("dashboard");
+      if (user) {
+        try { localStorage.setItem('authUser', JSON.stringify(user)) } catch (e) {}
+        setAuthUser(user)
+      } else {
+        const stored = localStorage.getItem('authUser')
+        if (stored) {
+          try { setAuthUser(JSON.parse(stored)) } catch (e) {}
+        }
+      }
+      showToast('Login berhasil!');
     }} />
   }
 
@@ -338,154 +528,6 @@ export default function App(){
 
   return (
     <div className="app">
-      <style>{`
-        .card, .full-card {
-          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-          border-radius: 12px;
-          transition: transform .2s ease, box-shadow .2s ease;
-          background: var(--bg1);
-          padding: 20px;
-        }
-        .card:hover, .full-card:hover {
-          transform: translateY(-2px);
-        }
-        .metric-card {
-          border-radius: 12px;
-          padding: 18px 16px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-          transition: transform .2s ease, box-shadow .2s ease;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-height: 110px;
-          background: rgba(255,255,255,0.92);
-        }
-        .metric-card:hover {
-          transform: translateY(-2px);
-        }
-        .metric-card .metric-icon {
-          width: 34px;
-          height: 34px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 12px;
-          background: rgba(255,255,255,0.8);
-          font-size: 16px;
-          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
-        }
-        .metric-card-total { background: rgba(227,244,255,0.9); }
-        .metric-card-critical { background: rgba(255,235,235,0.95); }
-        .metric-card-slow { background: rgba(255,244,229,0.95); }
-        .metric-card-modal { background: rgba(234,251,236,0.95); }
-        .metric-card-profit { background: rgba(237,251,245,0.95); }
-        .insight-card {
-          background: #fff9df;
-          border-left: 4px solid #f5a623;
-          border-radius: 12px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-          padding: 20px;
-        }
-        .insight-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 10px 0;
-        }
-        .insight-item:not(:last-child) {
-          margin-bottom: 10px;
-        }
-        .insight-item-icon {
-          width: 28px;
-          height: 28px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 10px;
-          background: rgba(255, 179, 0, 0.12);
-          color: #f0a02d;
-        }
-        .stock-bar {
-          height: 8px !important;
-          border-radius: 9999px !important;
-          background: rgba(0,0,0,0.05);
-          overflow: hidden;
-        }
-        .stock-fill {
-          border-radius: 9999px !important;
-          height: 100% !important;
-          background: linear-gradient(90deg, #E24B4A, #EF9F27);
-        }
-        .chart-panel {
-          position: relative;
-          border-radius: 12px;
-          overflow: hidden;
-          padding: 16px;
-          background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(247,251,255,0.95));
-        }
-        .chart-panel::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image: linear-gradient(0deg, rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
-          background-size: 100% 32px, 32px 100%;
-          pointer-events: none;
-        }
-        .chart-panel > div {
-          position: relative;
-          z-index: 1;
-        }
-        .top-chart-button {
-          border-radius: 9999px;
-          transition: all .2s ease;
-          padding: 8px 14px;
-          border: 1px solid rgba(29,158,117,0.22);
-          background: transparent;
-          color: var(--text);
-        }
-        .top-chart-button.active {
-          background: linear-gradient(135deg,#1d9e75,#2dc18c);
-          color: #fff;
-          border-color: transparent;
-          box-shadow: 0 10px 24px rgba(29,158,117,0.18);
-        }
-        .top-chart-button:hover {
-          transform: translateY(-1px);
-        }
-        .top-products-item {
-          border-radius: 12px;
-          padding: 14px;
-          background: rgba(255,255,255,0.85);
-          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
-        }
-        .top-products-rank {
-          width: 28px;
-          height: 28px;
-          border-radius: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 12px;
-          font-weight: 700;
-          background: rgba(29,158,117,0.1);
-          color: #1d9e75;
-        }
-        .top-products-rank-top {
-          background: linear-gradient(135deg,#ff8a3d,#ff5c55);
-          color: #fff;
-        }
-        .best-seller-badge {
-          padding: 2px 8px;
-          border-radius: 9999px;
-          background: rgba(255,140,46,0.14);
-          color: #d35400;
-          font-size: 11px;
-          font-weight: 700;
-        }
-        .card, .full-card {
-          margin-bottom: 20px;
-        }
-      `}</style>
       <div className="sidebar">
         <div className="logo" onClick={() => setPage('dashboard')} style={{ cursor: 'pointer' }}>
           <div className="logo-name">StokKu</div>
@@ -558,7 +600,7 @@ export default function App(){
             
             <div className="topbar-divider"></div>
             
-            <div className="user-badge">Toko Maju Jaya</div>
+            <div className="user-badge">{(authUser && (authUser.name || authUser.username)) || 'Toko Maju Jaya'}</div>
             
             <button className="btn-icon" title="Keluar dari aplikasi" onClick={handleSignOut}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -570,49 +612,141 @@ export default function App(){
           {/* DASHBOARD */}
           <div className={`page ${page==='dashboard'?'active':''}`} id="page-dashboard">
             <div className="section-label">Ringkasan Hari Ini</div>
-            <div className="metrics-grid mb16">
-              <div className="metric-card metric-card-total"><div className="metric-icon">📦</div><div><div className="metric-label">Total Produk</div><div className="metric-value">48</div><div className="metric-sub">aktif di sistem</div></div></div>
-              <div className="metric-card metric-card-critical"><div className="metric-icon">⚠️</div><div><div className="metric-label">Stok Kritis</div><div className="metric-value" style={{color:'var(--red)'}}>3</div><div className="metric-sub">perlu restock segera</div></div></div>
-              <div className="metric-card metric-card-slow"><div className="metric-icon">📦</div><div><div className="metric-label">Produk Tidak Laku</div><div className="metric-value" style={{color:'var(--amber)'}}>4</div><div className="metric-sub">lebih dari 30 hari</div></div></div>
-              <div className="metric-card metric-card-modal"><div className="metric-icon">💰</div><div><div className="metric-label">Modal di Stok</div><div className="metric-value" style={{fontSize:18}}>Rp 12,4jt</div><div className="metric-sub" style={{color:'var(--green-dark)'}}>+2,1% vs minggu lalu</div></div></div>
-              <div className="metric-card metric-card-profit"><div className="metric-icon">📈</div><div><div className="metric-label">Profit Hari Ini</div><div className="metric-value" style={{fontSize:18,color:'var(--green)'}}>Rp 450.000</div><div className="metric-sub" style={{color:'var(--green)'}}>+12%</div></div></div>
-            </div>
+           <div className="metrics-grid mb16">
+              <div className="metric-card metric-card-total">
+                <div>
+                  <div className="metric-label">Total Produk</div>
+                  <div className="metric-value">{totalProductsCount}</div>
+                  <div className="metric-sub">aktif di sistem</div>
+                </div>
+              </div>
 
-            <div className="card mb16 insight-card">
-              <div className="card-header"><div className="card-title">💡 Insight Hari Ini</div></div>
-              <div style={{display:'grid', gap:12}}>
-                <div className="insight-item">
-                  <span className="insight-item-icon">⚠️</span>
-                  <span>3 produk akan habis dalam 2 hari</span>
+              <div className="metric-card metric-card-critical">
+                <div>
+                  <div className="metric-label">Stok Kritis</div>
+                  <div className="metric-value metric-danger">{criticalCount}</div>
+                  <div className="metric-sub">perlu restock segera</div>
                 </div>
-                <div className="insight-item">
-                  <span className="insight-item-icon">📦</span>
-                  <span>1 produk berpotensi tidak laku</span>
+              </div>
+
+              <div className="metric-card metric-card-slow">
+                <div>
+                  <div className="metric-label">Produk Tidak Laku</div>
+                  <div className="metric-value">{slowMovingCount}</div>
+                  <div className="metric-sub">lebih dari 30 hari</div>
                 </div>
-                <div className="insight-item">
-                  <span className="insight-item-icon">💰</span>
-                  <span>Modal tertahan Rp 1.200.000</span>
+              </div>
+
+              <div className="metric-card metric-card-modal">
+                <div>
+                  <div className="metric-label">Modal di Stok</div>
+                  <div className="metric-value">Rp {totalStockValue.toLocaleString()}</div>
+                  <div className="metric-sub metric-positive">+2,1% vs minggu lalu</div>
                 </div>
-                <div className="insight-item">
-                  <span className="insight-item-icon">📈</span>
-                  <span>Penjualan naik 12% dari kemarin</span>
+              </div>
+
+              <div className="metric-card metric-card-profit">
+                <div>
+                  <div className="metric-label">Profit Hari Ini</div>
+                  <div className="metric-value metric-positive">Rp 450.000</div>
+                  <div className="metric-sub metric-positive">+12%</div>
                 </div>
               </div>
             </div>
 
-            <div className="two-col mb16">
-              <div className="card">
-                <div className="card-header"><div className="card-title">Stok Hampir Habis</div><span className="badge bd">3 produk</span></div>
-                <div className="prod-row"><div className="prod-icon">🥛</div><div style={{flex:1}}><div className="prod-name">Susu UHT 1L</div><div className="stock-bar"><div className="stock-fill" style={{width:'12%'}}/></div><div className="prod-meta">12 unit tersisa</div></div><span className="badge bd">Habis 2 hari</span></div>
-                <div className="prod-row"><div className="prod-icon">🍳</div><div style={{flex:1}}><div className="prod-name">Minyak Goreng 2L</div><div className="stock-bar"><div className="stock-fill" style={{width:'22%'}}/></div><div className="prod-meta">22 unit tersisa</div></div><span className="badge bw">Habis 5 hari</span></div>
-                <div className="prod-row"><div className="prod-icon">🍫</div><div style={{flex:1}}><div className="prod-name">Cokelat Batang 100g</div><div className="stock-bar"><div className="stock-fill" style={{width:'18%'}}/></div><div className="prod-meta">9 unit tersisa</div></div><span className="badge bw">Habis 6 hari</span></div>
+            <div className="dashboard-insight-grid mb16">
+              <div className="card compact-card insight-card">
+                <div className="card-header"><div className="card-title">💡 Insight Hari Ini</div></div>
+                <div className="insight-grid">
+                  <div className="insight-item">
+                    <div className="insight-item-icon">⚠️</div>
+                    <div>
+                      <div className="insight-item-title">3 produk akan habis dalam 2 hari</div>
+                      <div className="insight-item-sub">Prioritaskan restock cepat</div>
+                    </div>
+                  </div>
+                  <div className="insight-item">
+                    <div className="insight-item-icon">📦</div>
+                    <div>
+                      <div className="insight-item-title">1 produk berpotensi tidak laku</div>
+                      <div className="insight-item-sub">Evaluasi promosi & pergerakan</div>
+                    </div>
+                  </div>
+                  <div className="insight-item">
+                    <div className="insight-item-icon">💰</div>
+                    <div>
+                      <div className="insight-item-title">Modal tertahan Rp 1.200.000</div>
+                      <div className="insight-item-sub">Kurangi stok slow-moving</div>
+                    </div>
+                  </div>
+                  <div className="insight-item">
+                    <div className="insight-item-icon">📈</div>
+                    <div>
+                      <div className="insight-item-title">Penjualan naik 12% dari kemarin</div>
+                      <div className="insight-item-sub">Cashflow bergerak positif</div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="card">
-                <div className="card-header"><div className="card-title">Saran Restock Hari Ini</div><button className="btn" onClick={()=>setPage('restock')}>Lihat Semua</button></div>
-                <div className="restock-row"><div className="prod-icon">🥛</div><div style={{flex:1}}><div className="prod-name">Susu UHT 1L</div><div className="prod-meta">Rata terjual 6/hari · Habis 2 hari lagi</div></div><div style={{textAlign:'right'}}><div style={{fontWeight:600,fontSize:14}}>48 unit</div><div style={{fontSize:10,color:'var(--text3)'}}>stok 8 hari</div></div></div>
-                <div className="restock-row"><div className="prod-icon">🍳</div><div style={{flex:1}}><div className="prod-name">Minyak Goreng 2L</div><div className="prod-meta">Tren naik +40% · Habis 5 hari lagi</div></div><div style={{textAlign:'right'}}><div style={{fontWeight:600,fontSize:14}}>30 unit</div><div style={{fontSize:10,color:'var(--text3)'}}>stok 7 hari</div></div></div>
-                <div className="restock-row"><div className="prod-icon">🍫</div><div style={{flex:1}}><div className="prod-name">Cokelat Batang 100g</div><div className="prod-meta">Fast-moving · Sering habis malam hari</div></div><div style={{textAlign:'right'}}><div style={{fontWeight:600,fontSize:14}}>60 unit</div><div style={{fontSize:10,color:'var(--text3)'}}>stok 10 hari</div></div></div>
+              <div className="card compact-card">
+                <div className="card-header">
+                  <div className="card-title">Stok Hampir Habis</div>
+                  <span className="badge bd">3 produk</span>
+                </div>
+
+                {lowStockList.map(p => {
+                  const pct = Math.min(100, Math.round((p.stock || 0) / 50 * 100))
+                  return (
+                    <div className="prod-row" key={p.id}>
+                      <div className="prod-icon">{p.image || '📦'}</div>
+
+                      <div className="prod-info">
+                        <div className="prod-top">
+                          <div className="prod-name">{p.name}</div>
+                          <span className={`badge ${p.stock<=10 ? 'bd' : 'bw'}`}>{p.stock<=10 ? 'Habis' : 'Menipis' } {p.stock} unit</span>
+                        </div>
+
+                        <div className="stock-bar">
+                          <div className="stock-fill" style={{width:`${pct}%`}} />
+                        </div>
+
+                        <div className="prod-meta">{p.stock} unit tersisa</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="card compact-card">
+                <div className="card-header">
+                  <div className="card-title">Saran Restock Hari Ini</div>
+
+                  <button
+                    className="btn"
+                    onClick={()=>setPage('restock')}
+                  >
+                    Lihat Semua
+                  </button>
+                </div>
+
+                {lowStockList.map(p => (
+                  <div className="restock-row" key={p.id}>
+                    <div className="prod-icon">{p.image || '📦'}</div>
+
+                    <div className="restock-left">
+                      <div className="prod-name">{p.name}</div>
+                      <div className="prod-meta">
+                        Rata terjual - · Habis dalam {Math.max(1, Math.round((p.stock||0)/Math.max(1,5)))} hari
+                      </div>
+                    </div>
+
+                    <div className="restock-meta">
+                      <div className="restock-unit">{p.stock} unit</div>
+                      <div className="restock-stock">stok {Math.max(1, Math.round((p.stock||0)/6))} hari</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -620,23 +754,22 @@ export default function App(){
               <div className="card">
                 <div className="card-header"><div className="card-title">Tren Penjualan</div></div>
                 <div style={{padding:16}}>
-                  <div style={{display:'flex', gap:8, marginBottom:16}}>
+                  <div style={{display:'flex', gap:8, flexWrap:'wrap', marginBottom:14}}>
                     <button className={`top-chart-button ${salesTab==='day' ? 'active' : ''}`} onClick={()=>setSalesTab('day')}>Hari</button>
                     <button className={`top-chart-button ${salesTab==='week' ? 'active' : ''}`} onClick={()=>setSalesTab('week')}>Minggu</button>
                     <button className={`top-chart-button ${salesTab==='month' ? 'active' : ''}`} onClick={()=>setSalesTab('month')}>Bulan</button>
                     <button className={`top-chart-button ${salesTab==='year' ? 'active' : ''}`} onClick={()=>setSalesTab('year')}>Tahun</button>
                   </div>
-                  <div className="chart-panel">
-                    <div style={{display:'flex', gap:6, alignItems:'flex-end', height:180, width:'100%'}}>
-                      {safeMap(salesData[salesTab]).map((val, i) => {
-                        const max = Math.max(...salesData[salesTab])
-                        const height = (val / max) * 100
-                        return <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center'}}>
-                          <div style={{width:'100%', height:`${height}%`, background:'linear-gradient(180deg, #34b27d, #1d9e75)', borderRadius:'12px 12px 0 0', minHeight:8, transition:'height .3s ease'}}></div>
-                          <div style={{fontSize:10, marginTop:8, color:'var(--text3)'}}>{val}</div>
-                        </div>
-                      })}
-                    </div>
+                  <div className="chart-wrapper">
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={safeMap(salesData[salesTab]).map((value, index) => ({ name: trendChartLabels[salesTab][index] || `P${index + 1}`, value }))} margin={{ top: 12, right: 8, left: -12, bottom: 0 }}>
+                        <CartesianGrid vertical={false} stroke="#E5E7EB" strokeDasharray="3 3" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                        <Tooltip cursor={{ fill: 'rgba(16,185,129,0.06)' }} contentStyle={{ borderRadius: 14, border: '1px solid rgba(17,24,39,0.08)', background: '#fff', color: '#111827' }} />
+                        <Bar dataKey="value" fill="#10B981" radius={[12, 12, 0, 0]} barSize={24} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               </div>
@@ -644,33 +777,22 @@ export default function App(){
               <div className="card">
                 <div className="card-header"><div className="card-title">Top Produk</div></div>
                 <div style={{padding:16}}>
-                  <div style={{display:'flex', gap:8, marginBottom:16}}>
+                  <div style={{display:'flex', gap:8, flexWrap:'wrap', marginBottom:14}}>
                     <button className={`top-chart-button ${topProductsTab==='day' ? 'active' : ''}`} onClick={()=>setTopProductsTab('day')}>Hari</button>
                     <button className={`top-chart-button ${topProductsTab==='week' ? 'active' : ''}`} onClick={()=>setTopProductsTab('week')}>Minggu</button>
                     <button className={`top-chart-button ${topProductsTab==='month' ? 'active' : ''}`} onClick={()=>setTopProductsTab('month')}>Bulan</button>
                     <button className={`top-chart-button ${topProductsTab==='year' ? 'active' : ''}`} onClick={()=>setTopProductsTab('year')}>Tahun</button>
                   </div>
-                  <div style={{display:'grid', gap:12}}>
-                    {safeMap(topProductsData[topProductsTab]).map((prod, i) => {
-                      const max = Math.max(...topProductsData[topProductsTab].map(p=>p.value))
-                      const width = (prod.value / max) * 100
-                      return <div key={i} className="top-products-item">
-                        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
-                          <div style={{display:'flex', alignItems:'center', gap:10}}>
-                            <div className={`top-products-rank ${i===0 ? 'top-products-rank-top' : ''}`}>{i+1}</div>
-                            <span style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>{prod.name}</span>
-                          </div>
-                          {i===0 && <span className="best-seller-badge">🔥 Best Seller</span>}
-                        </div>
-                        <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'var(--text3)', marginTop:6}}>
-                          <span></span>
-                          <span>{prod.value}</span>
-                        </div>
-                        <div style={{height:8, borderRadius:9999, background:'var(--bg2)', overflow:'hidden', marginTop:8}}>
-                          <div style={{width:`${width}%`, height:'100%', background:'var(--green)'}}></div>
-                        </div>
-                      </div>
-                    })}
+                  <div className="chart-wrapper">
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart layout="vertical" data={safeMap(topProductsData[topProductsTab])} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid vertical={false} stroke="#E5E7EB" strokeDasharray="3 3" />
+                        <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} width={100} />
+                        <Tooltip cursor={{ fill: 'rgba(16,185,129,0.06)' }} contentStyle={{ borderRadius: 14, border: '1px solid rgba(17,24,39,0.08)', background: '#fff', color: '#111827' }} />
+                        <Bar dataKey="value" fill="#10B981" radius={[12, 12, 12, 12]} barSize={22} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               </div>
@@ -682,17 +804,40 @@ export default function App(){
             <div className="full-card">
               <div className="card-header">
                 <div className="card-title">Semua Produk</div>
-                <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <select value={selectedCategory} onChange={(e)=>setSelectedCategory(e.target.value)} style={{width:120}}>
-                    <option>Semua</option>
-                    <option>Minuman</option>
-                    <option>Sembako</option>
-                    <option>Snack</option>
-                    <option>Kebersihan</option>
-                    <option>Rumah Tangga</option>
-                  </select>
-                  <input type="text" placeholder="Cari produk..." style={{width:160}} value={searchQuery} onChange={(e)=>setSearchQuery(e.target.value)} />
-                  <button className="btn btn-primary" onClick={()=>setShowAddModal(true)}>+ Tambah Produk</button>
+                <div className="product-toolbar">
+
+                  <div className="product-toolbar-left">
+
+                    <select
+                      value={selectedCategory}
+                      onChange={(e)=>setSelectedCategory(e.target.value)}
+                      className="toolbar-select"
+                    >
+                      <option>Semua</option>
+                      <option>Minuman</option>
+                      <option>Sembako</option>
+                      <option>Snack</option>
+                      <option>Kebersihan</option>
+                      <option>Rumah Tangga</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Cari produk..."
+                      value={searchQuery}
+                      onChange={(e)=>setSearchQuery(e.target.value)}
+                      className="toolbar-search"
+                    />
+
+                  </div>
+
+                  <button
+                    className="btn btn-primary product-add-btn"
+                    onClick={()=>setShowAddModal(true)}
+                  >
+                    + Tambah Produk
+                  </button>
+
                 </div>
               </div>
               <div className="table-wrap">
@@ -734,27 +879,215 @@ export default function App(){
           </div>
 
           {/* PREDIKSI STOK */}
-          <div className={`page ${page==='prediksi'?'active':''}`} id="page-prediksi">
-            <div className="section-label">Prediksi Habis Stok — Moving Average 7 Hari</div>
-            <div className="full-card">
-              <div className="tabs"><div className="tab active">Semua</div><div className="tab">Kritis (&lt;7 hari)</div><div className="tab">Normal</div></div>
-              <div className="table-wrap">
-                <table><thead><tr><th>Produk</th><th>Stok Saat Ini</th><th>Rata Jual/Hari</th><th>Prediksi Habis</th><th>Rekomendasi</th><th>Status</th></tr></thead>
-                <tbody>
-                  <tr><td className="tname">Susu UHT 1L</td><td>12 unit</td><td>6 / hari</td><td className="pu">2 hari lagi</td><td>Segera beli 48 unit</td><td><span className="badge bd">Darurat</span></td></tr>
-                  <tr><td className="tname">Cokelat Batang 100g</td><td>9 unit</td><td>1,5 / hari</td><td className="pu">6 hari lagi</td><td>Beli 60 unit minggu ini</td><td><span className="badge bd">Segera</span></td></tr>
-                </tbody></table>
-              </div>
-              <div className="info-box">Prediksi dihitung menggunakan <strong>Moving Average 7 hari</strong>. Data diperbarui otomatis setiap ada transaksi baru.</div>
-            </div>
-          </div>
+<div className={`page ${page==='prediksi'?'active':''}`} id="page-prediksi">
+  <div className="section-label">
+    🤖 AI Prediksi Stok — Moving Average 7 Hari + Tren Penjualan
+  </div>
+
+  {/* SUMMARY CARDS */}
+  <div className="metrics-grid mb16">
+
+    <div className="metric-card">
+      <div>
+        <div className="metric-label">Produk Kritis</div>
+        <div className="metric-value metric-danger">3</div>
+        <div className="metric-sub">stok &lt; 7 hari</div>
+      </div>
+    </div>
+
+    <div className="metric-card">
+      <div>
+        <div className="metric-label">Akan Habis &lt; 7 Hari</div>
+        <div className="metric-value" style={{color:'#f59e0b'}}>5</div>
+        <div className="metric-sub">perlu perhatian</div>
+      </div>
+    </div>
+
+    <div className="metric-card">
+      <div>
+        <div className="metric-label">Total Restock</div>
+        <div className="metric-value metric-positive">248 unit</div>
+        <div className="metric-sub">estimasi kebutuhan</div>
+      </div>
+    </div>
+
+    <div className="metric-card">
+      <div>
+        <div className="metric-label">Potensi Kehilangan</div>
+        <div className="metric-value" style={{color:'#4f46e5'}}>Rp 2,4jt</div>
+        <div className="metric-sub">jika tidak restock</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style={{margin:'12px 0', display:'flex', alignItems:'center', gap:12}}>
+    <div style={{fontSize:13,color:'var(--text3)'}}>Prediksi AI:</div>
+    {aiLoading && <div>Meminta prediksi...</div>}
+    {aiError && <div style={{color:'red'}}>Error: {aiError}</div>}
+    {aiPrediction !== null && !aiLoading && (
+      <div style={{fontWeight:700}}>Prediksi penjualan (next): {Math.round(aiPrediction)}</div>
+    )}
+  </div>
+
+  <div className="full-card">
+
+    <div className="card-header prediction-header">
+
+      <div className="card-title">
+        Prediksi Detail per Produk
+      </div>
+
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <span className="badge bi" style={{fontSize:11}}>AI Prediction</span>
+
+        <select value={prediksiKategori} onChange={e=>setPrediksiKategori(e.target.value)} style={{padding:6,borderRadius:8,border:'1px solid var(--bg2)'}}>
+          <option value="">Pilih Kategori (default BEVERAGES)</option>
+          {Array.from(new Set(products.map(p=>p.category || 'Lainnya'))).map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+
+        <button className="btn btn-primary" style={{padding:'6px 14px',fontSize:13}} onClick={()=>requestPrediction(prediksiKategori)}>
+          Minta Prediksi
+        </button>
+
+        <button className="btn" style={{padding:'6px 14px',fontSize:13}} onClick={()=>{ navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(products.slice(0,10))); showToast('Sample produk disalin ke clipboard') }}>
+          Export Laporan
+        </button>
+      </div>
+
+    </div>
+
+    <div className="table-wrap">
+
+      <table className="prediction-table">
+
+        <thead>
+          <tr>
+            <th style={{width:'160px'}}>Produk</th>
+            <th style={{width:'100px'}}>Stok Saat Ini</th>
+            <th style={{width:'110px'}}>Rata Jual/Hari</th>
+            <th style={{width:'140px'}}>Prediksi Habis</th>
+            <th style={{width:'280px'}}>Rekomendasi AI</th>
+            <th style={{width:'100px'}}>Status</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {products.map(p => {
+            const avgSale = Math.max(1, Math.round((p.value || 0) / Math.max(1, (p.price || 1) * 20)))
+            const daysLeft = Math.max(0, Math.round((p.stock || 0) / Math.max(1, avgSale)))
+            const status = p.stock <= 10 ? 'Darurat' : (p.stock <= 20 ? 'Menipis' : 'Aman')
+            return (
+              <tr key={p.id}>
+                <td className="tname">
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontSize:20}}>{p.image || '📦'}</span>
+                    <span>{p.name}</span>
+                  </div>
+                </td>
+                <td style={{fontWeight:600}}>{p.stock} unit</td>
+                <td>
+                  <div style={{fontSize:13}}>{avgSale} / hari</div>
+                  <div style={{fontSize:11,color:'var(--text3)'}}>trend -</div>
+                </td>
+                <td>
+                  <div className="pu" style={{fontWeight:700,color: daysLeft<=2 ? '#dc2626' : '#f59e0b'}}>{daysLeft} hari lagi</div>
+                  <div className={`prediction-bar ${daysLeft<=2 ? 'critical' : (daysLeft<=7 ? 'warning' : 'ok')}`}>
+                    <div className="prediction-fill" style={{width:`${Math.min(100, (1 - (daysLeft/30)) * 100)}%`}} />
+                  </div>
+                </td>
+                <td>
+                  <div style={{fontSize:13,lineHeight:1.4,color:'var(--text)'}}>
+                    {daysLeft<=3 ? `🚨 Disarankan restock ${Math.max(10, 50 - (p.stock||0))} unit` : 'Tersedia'}
+                  </div>
+                </td>
+                <td>
+                  <span className={`ai-badge ${status==='Darurat' ? 'ai-badge-critical' : status==='Menipis' ? 'ai-badge-warning' : ''}`}> {status} </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+
+      </table>
+
+    </div>
+
+    <div className="prediction-engine-box">
+
+      <div className="prediction-engine-title">
+        AI Prediction Engine
+      </div>
+
+      <div className="prediction-engine-text">
+        Prediksi dihitung menggunakan
+        <strong> Moving Average 7 Hari + Exponential Smoothing</strong>.
+        Sistem otomatis mendeteksi tren penjualan, musiman,
+        dan pola weekend. Data diperbarui real-time setiap transaksi masuk.
+      </div>
+
+    </div>
+
+  </div>
+</div>
 
           {/* RESTOCK */}
           <div className={`page ${page==='restock'?'active':''}`} id="page-restock">
             <div className="section-label">Smart Restock Suggestion</div>
             <div className="full-card">
-              <div className="card-header"><div className="card-title">Rekomendasi Pembelian — Hari Ini</div><button className="btn btn-primary" onClick={()=>showToast('Export berhasil!')}>Export PDF</button></div>
-              <div className="restock-row"><div className="prod-icon" style={{fontSize:18}}>🥛</div><div style={{flex:1}}><div className="prod-name">Susu UHT 1L</div><div className="prod-meta">Stok kritis. Rata terjual 6/hari. Habis dalam 2 hari.</div></div><div style={{display:'flex',alignItems:'center',gap:8}}><div style={{textAlign:'right'}}><input type="number" defaultValue={48} style={{width:64,textAlign:'center',fontSize:13}} /><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>unit</div></div><button className="btn btn-primary" onClick={()=>showToast('Restock Susu UHT 1L dikonfirmasi!')}>Konfirmasi</button></div></div>
+              <div className="restock-ai-card">
+
+                <div className="restock-ai-left">
+
+                  <div className="restock-product-icon">{lowStockList[0]?.image || '📦'}</div>
+                  <div className="restock-product-info">
+                    <div className="restock-product-name">{lowStockList[0]?.name || '—'}</div>
+                    <div className="restock-product-meta">{lowStockList[0] ? `Stok ${lowStockList[0].stock} · Habis dalam ${Math.max(1, Math.round((lowStockList[0].stock||0)/Math.max(1,1)))} hari` : '-'}</div>
+                  </div>
+
+                </div>
+
+                <div className="restock-ai-center">
+
+                  <div className="restock-ai-label">
+                    Rekomendasi AI
+                  </div>
+
+                  <div className="restock-ai-value">
+                    48 unit
+                  </div>
+
+                  <div className="restock-ai-sub">
+                    estimasi kebutuhan 7 hari
+                  </div>
+
+                </div>
+
+                <div className="restock-ai-right">
+
+                  <div className="restock-input-group">
+
+                    <input
+                      type="number"
+                      value="48"
+                      className="restock-input"
+                    />
+
+                    <span className="restock-unit">
+                      unit
+                    </span>
+
+                  </div>
+
+                  <button className="btn btn-primary restock-confirm-btn">
+                    Konfirmasi
+                  </button>
+
+                </div>
+
+              </div>
             </div>
           </div>
 
@@ -762,109 +1095,128 @@ export default function App(){
           <div className={`page ${page==='slowmoving'?'active':''}`} id="page-slowmoving">
             <div className="section-label">Stok Tidak Laku — Slow Moving Detector</div>
 
-            <div className="slow-summary-grid mb16">
-              <div className="metric-card warning-card">
-                <div className="metric-label">📦 Produk Tidak Laku</div>
-                <div className="metric-value">4 produk</div>
-                <div className="metric-sub">lebih dari 30 hari</div>
-              </div>
-              <div className="metric-card warning-card">
-                <div className="metric-label">💰 Total Modal Tertahan</div>
-                <div className="metric-value">Rp 1.080.000</div>
-                <div className="metric-sub">kapital terblokir</div>
-              </div>
-              <div className="metric-card warning-card">
-                <div className="metric-label">⚠️ Produk Terparah</div>
-                <div className="metric-value">Kopi Sachet 20s</div>
-                <div className="metric-sub">87 hari tidak terjual</div>
-              </div>
-            </div>
+            <div className="metrics-grid metrics-grid-3 mb16">
 
-            <div className="full-card slow-highlight-card mb16">
-              <div className="card-header"><div className="card-title">🔥 Produk Paling Bermasalah</div></div>
-              <div className="highlight-box">
-                <div className="highlight-title">Kopi Sachet 20s</div>
-                <div className="highlight-meta">Tidak terjual selama <strong>87 hari</strong></div>
-                <div className="highlight-grid">
-                  <div>Stok: <strong>45 unit</strong></div>
-                  <div>Nilai: <strong>Rp 1.080.000</strong></div>
-                </div>
-                <div className="highlight-actions">
-                  <button className="btn btn-warning">Diskon 20%</button>
-                  <button className="btn">Bundling</button>
-                  <button className="btn">Stop Restock</button>
+              <div className="metric-card">
+                <div>
+                  <div className="metric-label">Produk Tidak Laku</div>
+                  <div className="metric-value metric-danger">4 produk</div>
+                  <div className="metric-sub">lebih dari 30 hari</div>
                 </div>
               </div>
+
+              <div className="metric-card">
+                <div>
+                  <div className="metric-label">Total Modal Tertahan</div>
+                  <div className="metric-value metric-danger">
+                    Rp 1.080.000
+                  </div>
+                  <div className="metric-sub">
+                    kapital terblokir
+                  </div>
+                </div>
+              </div>
+
+              <div className="metric-card">
+                <div>
+                  <div className="metric-label">Produk Terparah</div>
+                  <div className="metric-value metric-danger">
+                    {slowMovingProducts[0]?.name || '-'}
+                  </div>
+                  <div className="metric-sub">
+                    {slowMovingProducts[0] ? `${slowMovingProducts[0].daysNotSold || 0} hari tidak terjual` : '-'}
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-            <div className="full-card mb16">
-              <div className="card-header"><div className="card-title">Produk Bermasalah</div></div>
-              <div className="insight-note mb16">Produk kopi menyumbang 80% dari stok tidak laku. Disarankan untuk segera melakukan diskon atau bundling.</div>
+            <div className="full-card slowmoving-table">
+              <div className="card-header">
+                <div className="card-title">Produk Bermasalah</div>
+              </div>
+
+              <div className="slowmoving-info-box">
+                Produk kopi menyumbang <b>80%</b> dari stok tidak laku.
+                Disarankan untuk segera melakukan diskon atau bundling.
+              </div>
+
               <div className="table-wrap">
-                <table>
+                <table className="table slowmoving-table">
                   <thead>
                     <tr>
-                      <th>Produk</th>
-                      <th>Hari Tidak Terjual</th>
-                      <th>Stok</th>
-                      <th>Nilai Modal</th>
-                      <th>Label</th>
-                      <th>Saran Tindakan</th>
+                      <th>PRODUK</th>
+                      <th>HARI TIDAK TERJUAL</th>
+                      <th>STOK</th>
+                      <th>NILAI MODAL</th>
+                      <th>LABEL</th>
+                      <th>SARAN TINDAKAN</th>
                     </tr>
                   </thead>
+
                   <tbody>
-                    <tr>
-                      <td className="tname">Kopi Sachet 20s</td>
-                      <td>
-                        <div className="impact-line">
-                          <div className="impact-bar">
-                            <div className="impact-fill" style={{width:'97%'}} />
+                    {slowMovingProducts.map(p => (
+                      <tr key={p.id}>
+                        <td>{p.name}</td>
+
+                        <td>
+                          <div className="slow-bar-wrap">
+                            <div className="slow-bar">
+                              <div className="slow-bar-fill" style={{width: `${Math.min(100, Math.round(((p.daysNotSold||0)/120)*100))}%`}} />
+                            </div>
+                            <span>{p.daysNotSold || '—'} hari</span>
                           </div>
-                          <span className="impact-label">87 hari</span>
-                        </div>
-                      </td>
-                      <td>45 unit</td>
-                      <td>Rp 1.080.000</td>
-                      <td><span className="badge slow-badge slow-badge-90">90+ hari</span></td>
-                      <td className="action-pill-cell">
-                        <button className="action-pill">Diskon</button>
-                        <button className="action-pill">Bundling</button>
-                      </td>
-                    </tr>
+                        </td>
+
+                        <td>{p.stock} unit</td>
+
+                        <td>{`Rp ${Math.round(p.value||0).toLocaleString()}`}</td>
+
+                        <td><span className="badge bd">{(p.daysNotSold||0) > 90 ? '90+ hari' : `${p.daysNotSold || 0} hari`}</span></td>
+
+                        <td>
+                          <div className="table-actions">
+                            <button className="btn">Diskon</button>
+                            <button className="btn">Bundling</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <div className="two-col mb16 slow-bottom-grid">
-              <div className="card">
-                <div className="card-header"><div className="card-title">📊 Distribusi Slow Moving</div></div>
-                <div className="dist-item">
-                  <span>Kopi Sachet</span>
-                  <div className="dist-bar">
-                    <div className="dist-fill" style={{width:'84%'}} />
-                  </div>
-                </div>
-                <div className="dist-item">
-                  <span>Snack</span>
-                  <div className="dist-bar">
-                    <div className="dist-fill amber" style={{width:'42%'}} />
-                  </div>
-                </div>
-                <div className="dist-item">
-                  <span>Minyak</span>
-                  <div className="dist-bar">
-                    <div className="dist-fill" style={{width:'24%'}} />
-                  </div>
+            <div className="full-card slowmoving-chart-card">
+              <div className="card-header">
+                <div className="card-title">
+                  Distribusi Slow Moving
                 </div>
               </div>
-              <div className="card">
-                <div className="card-header"><div className="card-title">⚡ Quick Action</div></div>
-                <div className="quick-actions">
-                  <button className="btn btn-primary btn-full">Diskon semua produk slow moving</button>
-                  <button className="btn btn-primary btn-full">Buat bundling otomatis</button>
-                  <button className="btn btn-full">Hapus dari katalog</button>
-                </div>
+
+              <div style={{ width: '100%', height: 260 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={safeMap(topProductsData[topProductsTab])}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#e5e7eb"
+                    />
+
+                    <XAxis dataKey="name" />
+
+                    <YAxis />
+
+                    <Tooltip />
+
+                    <Bar
+                      dataKey="value"
+                      fill="#10b981"
+                      radius={[8, 8, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
@@ -947,141 +1299,229 @@ export default function App(){
 
           {/* INPUT */}
           <div className={`page ${page==='input'?'active':''}`} id="page-input">
-            <div className="section-label">Input Cepat — Voice & Barcode Scanner</div>
-            <div className="two-col mb16">
-              <div className="card"><div className="card-header"><div className="card-title">Voice Input</div><span className="badge bi">Beta</span></div><p style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>Ucapkan perintah seperti: <em>"Tambah 10 susu UHT"</em></p><button className="voice-btn" onClick={()=>{ showToast('Voice demo — menampilkan hasil'); document.getElementById('voiceResult') && (document.getElementById('voiceResult').style.display='block') }}><span className="voice-dot" id="voiceDot" /> <span id="voiceText">Tekan untuk mulai merekam</span></button><div id="voiceResult" style={{marginTop:12,padding:12,background:'var(--bg2)',borderRadius:'var(--radius)',display:'none'}}><div style={{fontSize:11,color:'var(--text3)',marginBottom:4}}>Terdeteksi:</div><div id="voiceResultText" style={{fontWeight:600,fontSize:14,marginBottom:10}}>&quot;Tambah 10 Susu UHT 1L&quot; — Stok: 12 → 22 unit</div><div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>{ showToast('Stok berhasil diperbarui!'); document.getElementById('voiceResult').style.display='none' }}>Simpan</button><button className="btn" onClick={()=>{ document.getElementById('voiceResult').style.display='none' }}>Batal</button></div></div></div>
+            <div className="section-label">Input Cepat</div>
 
-              <div className="card"><div className="card-header"><div className="card-title">Scan Barcode</div></div><p style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>Arahkan kamera ke barcode produk untuk input otomatis.</p><div className="scan-area" onClick={simulateScan}><div style={{fontSize:28,marginBottom:8}}>⬛</div><div style={{fontSize:13,fontWeight:500}}>Ketuk untuk buka kamera</div><div style={{fontSize:11,marginTop:4,color:'var(--text3)'}}>Mendukung QR Code dan barcode standar</div></div><div id="scanResult" style={{marginTop:12,padding:12,background:'var(--bg2)',borderRadius:'var(--radius)',display:'none'}}><div style={{fontSize:11,color:'var(--text3)'}}>Produk ditemukan:</div><div style={{fontWeight:600,fontSize:15,margin:'5px 0 3px'}}>Susu UHT 1L</div><div style={{fontSize:12,color:'var(--text3)'}}>Stok saat ini: 12 unit</div><div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}><button className="btn" onClick={()=>{ const i = document.getElementById('qtyIn'); i && (i.value = Math.max(1,parseInt(i.value)-1)) }}>−</button><input type="number" defaultValue={10} id="qtyIn" style={{width:55,textAlign:'center'}} /><button className="btn" onClick={()=>{ const i = document.getElementById('qtyIn'); i && (i.value = parseInt(i.value)+1) }}>+</button><button className="btn btn-primary" onClick={()=>{ showToast('Stok ditambahkan!'); document.getElementById('scanResult').style.display='none' }}>Tambah Stok</button></div></div></div>
+            <div className="quick-input-grid">
+
+              <div className="scanner-card">
+
+                <div className="card-header">
+                  <div className="card-title">
+                    Scan Barcode
+                  </div>
+                </div>
+
+                <label className="scanner-upload">
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    hidden
+                  />
+
+                  <div className="scanner-upload-icon">
+                    📷
+                  </div>
+
+                  <div className="scanner-upload-title">
+                    Upload atau Scan Barcode
+                  </div>
+
+                  <div className="scanner-upload-sub">
+                    Klik untuk buka kamera atau upload gambar barcode
+                  </div>
+
+                </label>
+
+              </div>
+
+              <div className="manual-input-card">
+
+                <div className="card-header">
+                  <div className="card-title">
+                    Input Manual
+                  </div>
+                </div>
+
+                <div className="manual-input-grid">
+
+                  <div>
+                    <label>Produk</label>
+
+                    <select>
+                      {products.map(p => (
+                        <option key={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label>Tipe Transaksi</label>
+
+                    <select>
+                      <option>
+                        Stok Masuk (+)
+                      </option>
+
+                      <option>
+                        Stok Keluar (-)
+                      </option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label>Jumlah</label>
+
+                    <input
+                      type="number"
+                      placeholder="10"
+                    />
+                  </div>
+
+                  <button className="btn btn-primary">
+                    Simpan
+                  </button>
+
+                </div>
+
+              </div>
+
             </div>
-
-            <div className="full-card"><div className="card-header"><div className="card-title">Input Manual</div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto auto',gap:10,alignItems:'end'}}><div><div style={{fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Produk</div><select style={{width:'100%'}}><option>Susu UHT 1L</option><option>Minyak Goreng 2L</option></select></div><div><div style={{fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Tipe Transaksi</div><select style={{width:'100%'}}><option>Stok Masuk (+)</option><option>Stok Keluar (−)</option></select></div><div><div style={{fontSize:11,color:'var(--text3)',marginBottom:4,fontWeight:600,textTransform:'uppercase',letterSpacing:0.05+'em'}}>Jumlah</div><input type="number" defaultValue={10} style={{width:80}} /></div><button className="btn btn-primary" style={{padding:'8px 18px'}} onClick={()=>showToast('Stok berhasil disimpan!')}>Simpan</button></div></div>
           </div>
 
           {/* UMKM */}
           <div className={`page ${page==='umkm'?'active':''}`} id="page-umkm">
             <div className="section-label">Mode UMKM — Tampilan Sederhana</div>
 
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>
-              <div style={{padding:16,background:'#fff4f0',borderRadius:18,boxShadow:'0 12px 20px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#b34735',marginBottom:8}}>⚠️ Produk Perlu Restock</div>
-                <div style={{fontSize:24,fontWeight:700,color:'#83241c'}}>{safeMap(umkmSummary.lowStock).length} Produk</div>
-              </div>
-              <div style={{padding:16,background:'#edf9f1',borderRadius:18,boxShadow:'0 12px 20px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#217c4f',marginBottom:8}}>💰 Profit Hari Ini</div>
-                <div style={{fontSize:24,fontWeight:700,color:'#145c39'}}>{umkmCashflow.profitToday}</div>
-              </div>
-              <div style={{padding:16,background:'#f7f7f8',borderRadius:18,boxShadow:'0 12px 20px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#5a5f68',marginBottom:8}}>📦 Total Produk Aktif</div>
-                <div style={{fontSize:24,fontWeight:700,color:'#333'}}>{products.length} Produk</div>
-              </div>
-            </div>
+            <div className="umkm-grid-2">
 
-            <div className="two-col mb16">
-              <div className="card">
-                <div className="card-header"><div className="card-title">Daily Summary</div></div>
-                <div style={{padding:16,display:'grid',gap:16}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>Low Stock</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
-                      {safeMap(umkmSummary.lowStock).map((item, index) => (
-                        <span key={index} style={{padding:'6px 12px',borderRadius:9999,background:'#f2f3f5',color:'#343a40',fontSize:12,fontWeight:600}}>{item}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>Slow Moving</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
-                      {safeMap(umkmSummary.slowMoving).map((item, index) => (
-                        <span key={index} style={{padding:'6px 12px',borderRadius:9999,background:'#f2f3f5',color:'#343a40',fontSize:12,fontWeight:600}}>{item}</span>
-                      ))}
-                    </div>
-                  </div>
+              <div className="umkm-card">
+                <div className="umkm-card-title">
+                  Daily Summary
                 </div>
-              </div>
-              <div className="card">
-                <div className="card-header"><div className="card-title">Estimated Stock Warning</div></div>
-                <div style={{padding:16,display:'grid',gap:12}}>
-                  {safeMap(umkmWarnings).map((warning, index) => {
-                    const isUrgent = index === 0
-                    return (
-                      <div key={index} style={{background:'#fff1f1',padding:14,borderRadius:14,borderLeft:`4px solid ${isUrgent ? '#d94a43' : '#f0a45b'}`,display:'flex',alignItems:'center',gap:10}}>
-                        <span style={{fontSize:18}}>{isUrgent ? '🔴' : '🟠'}</span>
-                        <div style={{fontSize:13,color:'#2f2f2f'}}>{warning}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
 
-            <div className="two-col mb16">
-              <div className="card">
-                <div className="card-header"><div className="card-title">Action Recommendation</div></div>
-                <div style={{padding:16,display:'grid',gap:10}}>
-                  {safeMap(umkmRecommendations).map((item, index) => (
-                    <div key={index} style={{display:'flex',gap:10,alignItems:'flex-start',paddingBottom:index < umkmRecommendations.length - 1 ? 10 : 0,borderBottom:index < umkmRecommendations.length - 1 ? '1px solid var(--bg2)' : 'none'}}>
-                      <span style={{fontSize:14,lineHeight:1.2,color:'var(--green)'}}>➡️</span>
-                      <div style={{fontSize:13,color:'var(--text2)'}}>{item}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="card">
-                <div className="card-header"><div className="card-title">Quick Restock</div></div>
-                <div style={{padding:16,display:'grid',gap:12}}>
-                  <div style={{display:'grid',gap:8}}>
-                    <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em'}}>Produk</div>
-                    <select value={restockProduct} onChange={(e)=>setRestockProduct(e.target.value)} style={{width:'100%'}}>
-                      <option value="">Pilih produk...</option>
-                      {safeMap(products).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                    </select>
+                <div style={{marginBottom:'14px'}}>
+                  <div style={{
+                    fontSize:13,
+                    fontWeight:600,
+                    marginBottom:8
+                  }}>
+                    Low Stock
                   </div>
-                  <div style={{display:'grid',gap:8}}>
-                    <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em'}}>Jumlah</div>
-                    <input type="number" value={restockQuantity} onChange={(e)=>setRestockQuantity(parseInt(e.target.value)||0)} style={{width:80}} />
-                  </div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {[10,20,50].map((amount)=> (
-                      <button key={amount} className="btn" type="button" onClick={()=>setRestockQuantity(amount)} style={{background: restockQuantity === amount ? 'var(--green)' : undefined, color: restockQuantity === amount ? 'white' : undefined}}>{`+${amount}`}</button>
+
+                  <div className="umkm-summary-group">
+                    {umkmSummary.lowStock.map((n, idx) => (
+                      <span className="summary-chip" key={idx}>{n}</span>
                     ))}
                   </div>
-                  <div style={{fontSize:12,color:'var(--text3)'}}>Estimasi stok cukup untuk 4 hari</div>
-                  <button className="btn btn-primary" onClick={confirmRestock} disabled={!restockProduct || restockQuantity <= 0}>Simpan</button>
+                </div>
+
+                <div>
+                  <div style={{
+                    fontSize:13,
+                    fontWeight:600,
+                    marginBottom:8
+                  }}>
+                    Slow Moving
+                  </div>
+
+                  <div className="umkm-summary-group">
+                    {umkmSummary.slowMoving.map((n, idx) => (
+                      <span className="summary-chip" key={idx}>{n}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
+
+              <div className="umkm-card">
+                <div className="umkm-card-title">
+                  Estimated Stock Warning
+                </div>
+
+                {umkmWarnings.map((w, i) => (
+                  <div className="umkm-warning" key={i}>{w}</div>
+                ))}
+              </div>
+
             </div>
 
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:16}}>
-              <div style={{padding:16,background:'#f4f9f5',borderRadius:18,boxShadow:'0 12px 20px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#2d6d44',marginBottom:8}}>💰 Cash In</div>
-                <div style={{fontSize:22,fontWeight:700,color:'#145c39'}}>{umkmCashflow.cashIn}</div>
+            <div className="umkm-grid-2">
+
+              <div className="umkm-card">
+                <div className="umkm-card-title">
+                  Action Recommendation
+                </div>
+
+                <div className="umkm-action-list">
+
+                  {umkmRecommendations.map((r, i) => (
+                    <div className="umkm-action-item" key={i}>{r}</div>
+                  ))}
+
+                </div>
               </div>
-              <div style={{padding:16,background:'#fff4f0',borderRadius:18,boxShadow:'0 12px 20px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#b34735',marginBottom:8}}>📉 Cash Out</div>
-                <div style={{fontSize:22,fontWeight:700,color:'#d43a2b'}}>{umkmCashflow.cashOut}</div>
+
+              <div className="umkm-card quick-restock-card">
+
+                <div className="umkm-card-title">
+                  Quick Restock
+                </div>
+
+                <div style={{
+                  display:'flex',
+                  flexDirection:'column',
+                  gap:'12px'
+                }}>
+
+                  <select>
+                    <option>
+                      Pilih produk...
+                    </option>
+                  </select>
+
+                  <input
+                    type="number"
+                    placeholder="Jumlah stok"
+                  />
+
+                  <button className="btn btn-primary">
+                    Simpan Restock
+                  </button>
+
+                </div>
+
               </div>
-              <div style={{padding:16,background:'#edf9f1',borderRadius:18,boxShadow:'0 12px 20px rgba(0,0,0,0.04)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#1f6c44',marginBottom:8}}>📈 Profit</div>
-                <div style={{fontSize:22,fontWeight:700,color:'#145c39'}}>{umkmCashflow.profitToday}</div>
-              </div>
+
             </div>
 
-            <div className="card">
-              <div className="card-header"><div className="card-title">Cashflow Comparison</div></div>
-              <div style={{padding:16,display:'grid',gap:14}}>
-                <div style={{display:'grid',gap:6}}>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--text3)'}}><span>Cash In</span><span>{umkmCashflow.cashIn}</span></div>
-                  <div style={{height:12,borderRadius:9999,background:'#e6f4ec',overflow:'hidden'}}><div style={{width:'80%',height:'100%',background:'#1d9e75'}} /></div>
-                </div>
-                <div style={{display:'grid',gap:6}}>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--text3)'}}><span>Cash Out</span><span>{umkmCashflow.cashOut}</span></div>
-                  <div style={{height:12,borderRadius:9999,background:'#ffe9e7',overflow:'hidden'}}><div style={{width:'38%',height:'100%',background:'#d94a43'}} /></div>
-                </div>
-                <div style={{display:'grid',gap:6}}>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--text3)'}}><span>Profit</span><span>{umkmCashflow.profitToday}</span></div>
-                  <div style={{height:12,borderRadius:9999,background:'#e6f4ec',overflow:'hidden'}}><div style={{width:'52%',height:'100%',background:'#1d9e75'}} /></div>
-                </div>
+            <div className="umkm-card">
+
+              <div className="umkm-card-title">
+                Cashflow Summary
               </div>
+
+              <div className="cashflow-mini">
+
+                <div className="cashflow-row">
+                  <span>Cash In</span>
+                  <strong className="positive">{umkmCashflow.cashIn}</strong>
+                </div>
+
+                <div className="cashflow-row">
+                  <span>Cash Out</span>
+                  <strong className="negative">{umkmCashflow.cashOut}</strong>
+                </div>
+
+                <div className="cashflow-divider" />
+
+                <div className="cashflow-row total">
+                  <span>Profit Bersih</span>
+                  <strong className="positive">{umkmCashflow.profitToday}</strong>
+                </div>
+
+              </div>
+
             </div>
           </div>
 
@@ -1105,7 +1545,12 @@ export default function App(){
                   <div className="modal-title">Edit Produk</div>
                   <button className="modal-close" onClick={()=>setShowEditModal(false)}>×</button>
                 </div>
-                <ProductForm product={editingProduct} onSubmit={editProduct} onCancel={()=>setShowEditModal(false)} />
+                <ProductForm product={editingProduct} onSubmit={editProduct} onCancel={()=>setShowEditModal(false)} onDelete={() => {
+                  if (!editingProduct) return
+                  if (window.confirm('Yakin ingin menghapus produk ini?')) {
+                    deleteProduct(editingProduct)
+                  }
+                }} />
               </div>
             </div>
           )}

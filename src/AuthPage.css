@@ -109,6 +109,48 @@
   font-size: 1rem;
 }
 
+/* Ensure inputs inside the auth form stay white even if global styles change */
+.form-container input[type="text"],
+.form-container input[type="email"],
+.form-container input[type="tel"],
+.form-container input[type="password"] {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+/* Explicit form-input class to ensure consistent look */
+.form-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 1rem;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Stronger override for any global input rules that may still apply */
+.form-container .input-group input.form-input {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border: 1px solid #e5e7eb !important;
+  padding: 0.75rem !important;
+  border-radius: 12px !important;
+  font-size: 16px !important;
+}
+
+/* Focus styles to match highlighted Email state */
+.form-container .input-group input.form-input:focus,
+.form-container .input-group input.form-input:focus-visible {
+  border-color: #f59e0b !important; /* amber/gold */
+  box-shadow: 0 0 0 6px rgba(245,158,11,0.08) !important;
+  outline: none !important;
+}
+
+.form-container .input-group input.form-input::placeholder {
+  color: #6b7280 !important;
+}
 .input-group input::placeholder {
   color: #6b7280;
 }

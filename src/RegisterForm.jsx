@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const RegisterForm = ({ onSwitch, onLogin }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -13,6 +15,7 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
     if (!name) newErrors.name = 'Name is required';
     if (!email) newErrors.email = 'Email is required';
     if (!phone) newErrors.phone = 'Phone number is required';
+    else if (!/^\d+$/.test(phone)) newErrors.phone = 'Phone number must contain digits only';
     if (!password || password.length < 6) newErrors.password = 'Password must be at least 6 characters';
     if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
     setErrors(newErrors);
@@ -22,8 +25,29 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validate()) {
-      console.log('Register:', { name, email, phone, password });
-      onLogin(); // Simulate register success
+      (async () => {
+        try {
+          const res = await fetch(`${API_URL}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, phone, password })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setErrors(prev => ({ ...prev, submit: data.error || 'Registration failed' }));
+            return;
+          }
+          // Registration successful -> store name/email temporarily and switch to Login view
+          try {
+            if (name) sessionStorage.setItem('preRegName', name)
+            if (email) sessionStorage.setItem('preRegEmail', email)
+            if (data.token) localStorage.removeItem('authToken')
+          } catch (e) {}
+          if (typeof onSwitch === 'function') onSwitch()
+        } catch (err) {
+          setErrors(prev => ({ ...prev, submit: 'Network error' }));
+        }
+      })();
     }
   };
 
@@ -33,6 +57,7 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
       <form onSubmit={handleSubmit}>
         <div className="input-group">
           <input
+            className="form-input"
             type="text"
             placeholder="Name"
             value={name}
@@ -42,6 +67,7 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
         </div>
         <div className="input-group">
           <input
+            className="form-input"
             type="email"
             placeholder="Email"
             value={email}
@@ -51,15 +77,17 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
         </div>
         <div className="input-group">
           <input
+            className="form-input"
             type="tel"
             placeholder="Phone Number"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
           />
           {errors.phone && <span className="error">{errors.phone}</span>}
         </div>
         <div className="input-group">
           <input
+            className="form-input"
             type="password"
             placeholder="Password"
             value={password}
@@ -69,6 +97,7 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
         </div>
         <div className="input-group">
           <input
+            className="form-input"
             type="password"
             placeholder="Confirm Password"
             value={confirmPassword}
@@ -77,6 +106,7 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
           {errors.confirmPassword && <span className="error">{errors.confirmPassword}</span>}
         </div>
         <button type="submit" className="submit-btn">Sign Up</button>
+        {errors.submit && <span className="error">{errors.submit}</span>}
       </form>
       <div className="social-login">
         <p>Or sign up with:</p>
