@@ -5,7 +5,7 @@ from datetime import datetime
 
 products_bp = Blueprint('products', __name__)
 
-def get_user_from_token(auth_header):
+def get_user_id_from_token(auth_header):
     if not auth_header:
         return None
     parts = auth_header.split()
@@ -18,11 +18,7 @@ def get_user_from_token(auth_header):
         user_id = payload.get('sub')
         if not user_id:
             return None
-        db = SessionLocal()
-        try:
-            return db.query(User).filter(User.id == int(user_id)).first()
-        finally:
-            db.close()
+        return int(user_id)
     except Exception:
         return None
 
@@ -30,12 +26,12 @@ def get_user_from_token(auth_header):
 @products_bp.route('/products', methods=['GET'])
 def list_products():
     auth = request.headers.get('Authorization') or request.headers.get('authorization')
-    user = get_user_from_token(auth)
-    if not user:
+    user_id = get_user_id_from_token(auth)
+    if not user_id:
         return jsonify({'error': 'unauthorized'}), 401
     db = SessionLocal()
     try:
-        prods = db.query(Product).filter(Product.user_id == user.id).all()
+        prods = db.query(Product).filter(Product.user_id == user_id).all()
         result = []
         for p in prods:
             result.append({
@@ -56,15 +52,15 @@ def list_products():
 @products_bp.route('/products/<int:product_id>', methods=['DELETE'])
 def delete_product(product_id):
     auth = request.headers.get('Authorization') or request.headers.get('authorization')
-    user = get_user_from_token(auth)
-    if not user:
+    user_id = get_user_id_from_token(auth)
+    if not user_id:
         return jsonify({'error': 'unauthorized'}), 401
     db = SessionLocal()
     try:
         p = db.query(Product).filter(Product.id == product_id).first()
         if not p:
             return jsonify({'error': 'not found'}), 404
-        if p.user_id != user.id:
+        if p.user_id != user_id:
             return jsonify({'error': 'forbidden'}), 403
         db.delete(p)
         db.commit()
@@ -76,8 +72,8 @@ def delete_product(product_id):
 @products_bp.route('/products', methods=['POST'])
 def create_product():
     auth = request.headers.get('Authorization') or request.headers.get('authorization')
-    user = get_user_from_token(auth)
-    if not user:
+    user_id = get_user_id_from_token(auth)
+    if not user_id:
         return jsonify({'error': 'unauthorized'}), 401
     data = request.get_json() or {}
     name = data.get('name')
@@ -89,14 +85,73 @@ def create_product():
     price_buy = data.get('price_buy') or 0
     stock = data.get('stock') or 0
 
+    # Validation
+    try:
+        price_buy = float(price_buy)
+        stock = int(stock)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'price_buy must be a number and stock must be an integer'}), 400
+
+    if price_buy < 0 or stock < 0:
+        return jsonify({'error': 'price_buy and stock must be non-negative values'}), 400
+
     db = SessionLocal()
     try:
-        p = Product(user_id=user.id, product_code=product_code, name=name,
+        p = Product(user_id=user_id, product_code=product_code, name=name,
                     category=category, image_emoji=image_emoji,
                     price_buy=price_buy, stock=stock, created_at=datetime.utcnow())
         db.add(p)
         db.commit()
         db.refresh(p)
         return jsonify({'id': p.id, 'name': p.name, 'stock': p.stock}), 201
+    finally:
+        db.close()
+
+
+@products_bp.route('/products/<int:product_id>', methods=['PUT'])
+def update_product(product_id):
+    auth = request.headers.get('Authorization') or request.headers.get('authorization')
+    user_id = get_user_id_from_token(auth)
+    if not user_id:
+        return jsonify({'error': 'unauthorized'}), 401
+    data = request.get_json() or {}
+    
+    db = SessionLocal()
+    try:
+        p = db.query(Product).filter(Product.id == product_id).first()
+        if not p:
+            return jsonify({'error': 'not found'}), 404
+        if p.user_id != user_id:
+            return jsonify({'error': 'forbidden'}), 403
+            
+        if 'name' in data:
+            p.name = data['name']
+        if 'category' in data:
+            p.category = data['category']
+        if 'image_emoji' in data:
+            p.image_emoji = data['image_emoji']
+        if 'product_code' in data:
+            p.product_code = data['product_code']
+            
+        if 'price_buy' in data:
+            try:
+                price_val = float(data['price_buy'])
+                if price_val < 0:
+                    return jsonify({'error': 'price_buy must be non-negative'}), 400
+                p.price_buy = price_val
+            except (ValueError, TypeError):
+                return jsonify({'error': 'price_buy must be a number'}), 400
+                
+        if 'stock' in data:
+            try:
+                stock_val = int(data['stock'])
+                if stock_val < 0:
+                    return jsonify({'error': 'stock must be non-negative'}), 400
+                p.stock = stock_val
+            except (ValueError, TypeError):
+                return jsonify({'error': 'stock must be an integer'}), 400
+                
+        db.commit()
+        return jsonify({'status': 'updated', 'id': product_id}), 200
     finally:
         db.close()

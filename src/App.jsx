@@ -8,6 +8,13 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const pages = ['dashboard','stok','prediksi','restock','slowmoving','cashflow','input','umkm']
 
+const trendChartLabels = {
+  day: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
+  week: ['Minggu 1', 'Minggu 2', 'Minggu 3', 'Minggu 4'],
+  month: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+  year: ['2023', '2024', '2025', '2026']
+}
+
 export default function App(){
   const [isLoggedIn, setIsLoggedIn] = useState(
     localStorage.getItem("isLoggedIn") === "true"
