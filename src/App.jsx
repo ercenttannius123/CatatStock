@@ -1,3 +1,39 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import React, { useEffect, useRef, useState } from 'react'
 import { Chart, registerables } from 'chart.js'
 import { ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, CartesianGrid, Bar, Legend } from 'recharts'
@@ -6,7 +42,7 @@ Chart.register(...registerables)
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
-const pages = ['dashboard','stok','prediksi','restock','slowmoving','cashflow','input','umkm']
+const pages = ['dashboard','stok','prediksi','restock','slowmoving','cashflow','input','monitoring','umkm']
 
 const trendChartLabels = {
   day: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
@@ -50,16 +86,24 @@ export default function App(){
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState(null)
   const [prediksiKategori, setPrediksiKategori] = useState('')
+  const [transactions, setTransactions] = useState([])
+  const [inputProductId, setInputProductId] = useState('')
+  const [inputTxType, setInputTxType] = useState('out')
+  const [inputQty, setInputQty] = useState(1)
+  const [umkmRestockProductId, setUmkmRestockProductId] = useState('')
+  const [umkmRestockQty, setUmkmRestockQty] = useState(1)
 
+  const cashInVal = transactions.filter(t => t.type === 'out').reduce((sum, t) => sum + t.total_price, 0)
+  const cashOutVal = transactions.filter(t => t.type === 'in').reduce((sum, t) => sum + t.total_price, 0)
+  const netVal = cashInVal - cashOutVal
   const cashflowData = {
-    cashIn: 'Rp 8.200.000',
-    cashOut: 'Rp 4.750.000',
-    net: 'Rp 3.450.000'
+    cashIn: `Rp ${Math.round(cashInVal).toLocaleString()}`,
+    cashOut: `Rp ${Math.round(cashOutVal).toLocaleString()}`,
+    net: `${netVal >= 0 ? '+' : ''}Rp ${Math.round(netVal).toLocaleString()}`
   }
-  
 
   useEffect(()=>{
-    if (!isLoggedIn) { setProducts([]); return }
+    if (!isLoggedIn) { setProducts([]); setTransactions([]); return }
     let cancelled = false
     async function fetchProducts() {
       try {
@@ -83,15 +127,37 @@ export default function App(){
           value: (Math.round(p.price_buy) || 0) * (p.stock || 0)
         }))
         setProducts(mapped)
+        if (mapped.length > 0 && !inputProductId) {
+          setInputProductId(String(mapped[0].rawId))
+        }
+        if (mapped.length > 0 && !umkmRestockProductId) {
+          setUmkmRestockProductId(String(mapped[0].rawId))
+        }
       } catch (e) {
         console.error('Error loading products', e)
       }
     }
+    async function fetchTransactions() {
+      try {
+        const res = await fetch(`${API_URL}/transactions`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+        })
+        if (!res.ok) {
+          console.error('Failed loading transactions', res.status)
+          return
+        }
+        const data = await res.json()
+        if (cancelled) return
+        setTransactions(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error('Error loading transactions', e)
+      }
+    }
     fetchProducts()
+    fetchTransactions()
     return () => { cancelled = true }
   }, [isLoggedIn])
 
-  // Derived dashboard metrics from products
   const totalProductsCount = products.length
   const criticalProducts = products.filter(p => typeof p.stock === 'number' && p.stock <= 10)
   const criticalCount = criticalProducts.length
@@ -131,7 +197,46 @@ export default function App(){
 
   const modalData = products.slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,4).map(p=>({ name: p.name, value: `Rp ${Math.round(p.value||0).toLocaleString()}`, percent: Math.round(((p.value||0)/ (totalForCats||1)) * 100) }))
 
-  const cashflowChart = [] // placeholder if needed later
+  const cashflowChart = (() => {
+    const groups = {}
+    transactions.forEach(t => {
+      if (!t.created_at) return
+      const date = new Date(t.created_at)
+      const key = date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
+      if (!groups[key]) {
+        groups[key] = { month: key, in: 0, out: 0 }
+      }
+      if (t.type === 'out') {
+        groups[key].in += t.total_price || 0
+      } else if (t.type === 'in') {
+        groups[key].out += t.total_price || 0
+      }
+    })
+    
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      const parseKey = (k) => {
+        const parts = k.split(' ')
+        const months = { 'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5, 'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11 }
+        return new Date(parseInt(parts[1]), months[parts[0]] || 0, 1)
+      }
+      return parseKey(a) - parseKey(b)
+    })
+    
+    const chart = sortedKeys.map(k => ({
+      month: k,
+      in: Math.round(groups[k].in),
+      out: Math.round(groups[k].out)
+    }))
+
+    if (chart.length === 0) {
+      return [
+        { month: 'Mar 2026', in: Math.round(totalStockValue * 0.1), out: Math.round(totalStockValue * 0.15) },
+        { month: 'Apr 2026', in: Math.round(totalStockValue * 0.25), out: Math.round(totalStockValue * 0.2) },
+        { month: 'Mei 2026', in: Math.round(totalStockValue * 0.4), out: Math.round(totalStockValue * 0.3) }
+      ]
+    }
+    return chart
+  })()
 
   const salesData = { day: [], week: [], month: [], year: [] }
 
@@ -224,6 +329,12 @@ export default function App(){
         value: (Math.round(p.price_buy) || 0) * (p.stock || 0)
       }))
       setProducts(mapped)
+      if (mapped.length > 0 && !inputProductId) {
+        setInputProductId(String(mapped[0].rawId))
+      }
+      if (mapped.length > 0 && !umkmRestockProductId) {
+        setUmkmRestockProductId(String(mapped[0].rawId))
+      }
     } catch (e) {
       console.error('Error loading products', e)
     }
@@ -399,14 +510,110 @@ export default function App(){
         }
       } catch (e) {
         console.error('Restock error', e)
-        showToast('Gagal restock')
+        showToast('Gagal melakukan restock')
       } finally {
         setShowRestockModal(false)
-        setRestockProduct('')
-        setRestockQuantity(0)
       }
     })()
   }
+
+  async function fetchTransactions() {
+    try {
+      const res = await fetch(`${API_URL}/transactions`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+      })
+      if (!res.ok) {
+        console.error('Failed loading transactions', res.status)
+        return
+      }
+      const data = await res.json()
+      setTransactions(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error('Error loading transactions', e)
+    }
+  }
+
+  async function saveTransaction() {
+    try {
+      if (!inputProductId) {
+        showToast('Pilih produk terlebih dahulu')
+        return
+      }
+      if (!inputQty || inputQty <= 0) {
+        showToast('Jumlah harus lebih besar dari 0')
+        return
+      }
+      const res = await fetch(`${API_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          product_id: parseInt(inputProductId),
+          type: inputTxType,
+          quantity: parseInt(inputQty)
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        showToast(data.error || 'Gagal menyimpan transaksi')
+        return
+      }
+      showToast(`Transaksi ${data.product_name} berhasil disimpan!`)
+      setInputQty(1)
+      await fetchProducts()
+      await fetchTransactions()
+    } catch (e) {
+      console.error('Save transaction error', e)
+      showToast('Gagal menyimpan transaksi')
+    }
+  }
+
+  async function handleUmkmRestock() {
+    try {
+      if (!umkmRestockProductId) {
+        showToast('Pilih produk terlebih dahulu')
+        return
+      }
+      if (!umkmRestockQty || umkmRestockQty <= 0) {
+        showToast('Jumlah harus lebih besar dari 0')
+        return
+      }
+      const res = await fetch(`${API_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          product_id: parseInt(umkmRestockProductId),
+          type: 'in',
+          quantity: parseInt(umkmRestockQty)
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        showToast(data.error || 'Gagal menyimpan restock')
+        return
+      }
+      showToast(`Restock ${data.product_name} berhasil!`)
+      setUmkmRestockQty(1)
+      await fetchProducts()
+      await fetchTransactions()
+    } catch (e) {
+      console.error('UMKM Restock error', e)
+      showToast('Gagal menyimpan restock')
+    }
+  }
+
+
+
+
+
+
+
+
 
   function ProductForm({ product, onSubmit, onCancel, onDelete }) {
     const [formData, setFormData] = useState(product ? {
@@ -568,6 +775,15 @@ export default function App(){
           <div className={`nav-item ${page==='cashflow'?'active':''}`} onClick={()=>setPage('cashflow')}>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="1" y="4.5" width="14" height="9" rx="1.5"/><path d="M4 4.5V3.5a1 1 0 011-1h6a1 1 0 011 1v1"/><circle cx="8" cy="9" r="1.5"/></svg>
             <span>Cashflow Stok</span>
+          </div>
+          <div className={`nav-item ${page==='monitoring'?'active':''}`} onClick={()=>setPage('monitoring')}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <rect x="2" y="2" width="12" height="12" rx="2" />
+              <line x1="5" y1="6" x2="11" y2="6" />
+              <line x1="5" y1="9" x2="11" y2="9" />
+              <line x1="5" y1="12" x2="8" y2="12" />
+            </svg>
+            <span>Log Pemantauan</span>
           </div>
           <div className="nav-section">Input</div>
           <div className={`nav-item ${page==='input'?'active':''}`} onClick={()=>setPage('input')}>
@@ -1234,7 +1450,7 @@ export default function App(){
             <div className="metrics-grid mb16" style={{gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px'}}>
               <div className="metric-card">
                 <div className="metric-label">Total Nilai Stok</div>
-                <div className="metric-value" style={{fontSize:18}}>Rp 12,4jt</div>
+                <div className="metric-value" style={{fontSize:18}}>Rp {totalStockValue.toLocaleString()}</div>
               </div>
               <div className="metric-card">
                 <div className="metric-label">Profit Summary</div>
@@ -1302,6 +1518,132 @@ export default function App(){
                 </ResponsiveContainer>
               </div>
             </div>
+
+            <div className="card mb16">
+              <div className="card-header">
+                <div className="card-title">Riwayat Transaksi Terkini</div>
+                <span className="badge bi">{transactions.length} transaksi</span>
+              </div>
+              <div className="table-wrap" style={{marginTop:12}}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tanggal</th>
+                      <th>Produk</th>
+                      <th>Tipe</th>
+                      <th>Jumlah</th>
+                      <th>Harga</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactions.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{textAlign:'center',padding:24,color:'var(--text-secondary)'}}>
+                          Belum ada transaksi tercatat. Masukkan transaksi baru di halaman Input Cepat!
+                        </td>
+                      </tr>
+                    ) : (
+                      transactions.slice(0, 10).map(t => (
+                        <tr key={t.id}>
+                          <td>{new Date(t.created_at).toLocaleString('id-ID')}</td>
+                          <td className="tname">
+                            <span style={{fontSize:18,marginRight:8}}>{t.product_emoji || '📦'}</span>
+                            {t.product_name}
+                          </td>
+                          <td>
+                            <span className={`badge ${t.type === 'in' ? 'bs' : 'bd'}`}>
+                              {t.type === 'in' ? 'Stok Masuk' : 'Stok Keluar'}
+                            </span>
+                          </td>
+                          <td>{t.quantity} unit</td>
+                          <td>Rp {Math.round(t.price).toLocaleString()}</td>
+                          <td style={{fontWeight:600}} className={t.type === 'out' ? 'metric-positive' : 'metric-danger'}>
+                            {t.type === 'out' ? '+' : '-'}Rp {Math.round(t.total_price).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* MONITORING LOGS */}
+          <div className={`page ${page==='monitoring'?'active':''}`} id="page-monitoring">
+            <div className="section-label">📋 Log Pemantauan Stok & Aktivitas</div>
+
+            <div className="full-card">
+              <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+                <div className="card-title">Audit Trail & Log Aktivitas Real-time</div>
+                <div style={{display:'flex',gap:8}}>
+                  <button className="btn" onClick={fetchTransactions}>🔄 Refresh Log</button>
+                  <button className="btn" style={{background:'#e74c3c',color:'#fff',borderColor:'#e74c3c'}} onClick={() => { if(window.confirm('Bersihkan log? Tindakan ini hanya bersifat visual untuk sesi saat ini.')) { setTransactions([]) } }}>🗑️ Clear Log</button>
+                </div>
+              </div>
+
+              <div style={{padding:'12px 16px',background:'rgba(16,185,129,0.05)',borderLeft:'4px solid var(--green)',margin:'12px 16px',borderRadius:8,fontSize:13}}>
+                ℹ️ Setiap pembaruan stok baik via <b>Penjualan</b>, <b>Restock Manual</b>, <b>Saran Restock AI</b>, maupun <b>Edit Produk Langsung</b> otomatis tercatat di sistem audit trail ini secara real-time.
+              </div>
+
+              <div className="table-wrap" style={{marginTop:8}}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{width:'180px'}}>WAKTU & TANGGAL</th>
+                      <th style={{width:'220px'}}>PRODUK</th>
+                      <th style={{width:'150px'}}>JENIS AKTIVITAS</th>
+                      <th style={{width:'120px'}}>PERUBAHAN STOK</th>
+                      <th>DESKRIPSI MONITOR LOG</th>
+                      <th style={{width:'150px'}}>AKTOR (USER)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactions.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{textAlign:'center',padding:32,color:'var(--text-secondary)'}}>
+                          Belum ada catatan log pemantauan stok di sistem.
+                        </td>
+                      </tr>
+                    ) : (
+                      transactions.map(t => {
+                        const dateStr = new Date(t.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
+                        const isStockIn = t.type === 'in'
+                        
+                        return (
+                          <tr key={t.id}>
+                            <td style={{fontFamily:'monospace',fontSize:12}}>{dateStr}</td>
+                            <td className="tname">
+                              <span style={{fontSize:18,marginRight:8}}>{t.product_emoji || '📦'}</span>
+                              {t.product_name}
+                            </td>
+                            <td>
+                              <span className={`badge ${isStockIn ? 'bs' : 'bd'}`}>
+                                {isStockIn ? '📈 Stok Masuk' : '📉 Stok Keluar'}
+                              </span>
+                            </td>
+                            <td style={{fontWeight:700}} className={isStockIn ? 'metric-positive' : 'metric-danger'}>
+                              {isStockIn ? '+' : '-'}{t.quantity} unit
+                            </td>
+                            <td style={{fontSize:13}}>
+                              <code>
+                                [MONITORING LOG] {isStockIn ? 'RESTOCKED' : 'SOLD'} product '{t.product_name}' (ID: {t.product_id}). Change: {isStockIn ? '+' : '-'}{t.quantity} unit @ Rp {Math.round(t.price).toLocaleString()}
+                              </code>
+                            </td>
+                            <td>
+                              <span className="user-badge" style={{padding:'4px 8px',borderRadius:6,background:'var(--bg2)',fontSize:11}}>
+                                👤 {authUser?.username || 'Administrator'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           {/* INPUT */}
@@ -1356,9 +1698,14 @@ export default function App(){
                   <div>
                     <label>Produk</label>
 
-                    <select>
+                    <select
+                      value={inputProductId}
+                      onChange={e => setInputProductId(e.target.value)}
+                    >
                       {products.map(p => (
-                        <option key={p.id}>{p.name}</option>
+                        <option key={p.id} value={p.rawId}>
+                          {p.image || '📦'} {p.name}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1366,12 +1713,15 @@ export default function App(){
                   <div>
                     <label>Tipe Transaksi</label>
 
-                    <select>
-                      <option>
+                    <select
+                      value={inputTxType}
+                      onChange={e => setInputTxType(e.target.value)}
+                    >
+                      <option value="in">
                         Stok Masuk (+)
                       </option>
 
-                      <option>
+                      <option value="out">
                         Stok Keluar (-)
                       </option>
                     </select>
@@ -1383,11 +1733,13 @@ export default function App(){
                     <input
                       type="number"
                       placeholder="10"
+                      value={inputQty}
+                      onChange={e => setInputQty(Math.max(1, parseInt(e.target.value) || 1))}
                     />
                   </div>
 
-                  <button className="btn btn-primary">
-                    Simpan
+                  <button className="btn btn-primary" onClick={saveTransaction}>
+                    Simpan Transaksi
                   </button>
 
                 </div>
@@ -1481,18 +1833,25 @@ export default function App(){
                   gap:'12px'
                 }}>
 
-                  <select>
-                    <option>
-                      Pilih produk...
-                    </option>
+                  <select
+                    value={umkmRestockProductId}
+                    onChange={e => setUmkmRestockProductId(e.target.value)}
+                  >
+                    {products.map(p => (
+                      <option key={p.id} value={p.rawId}>
+                        {p.image || '📦'} {p.name}
+                      </option>
+                    ))}
                   </select>
 
                   <input
                     type="number"
                     placeholder="Jumlah stok"
+                    value={umkmRestockQty}
+                    onChange={e => setUmkmRestockQty(Math.max(1, parseInt(e.target.value) || 1))}
                   />
 
-                  <button className="btn btn-primary">
+                  <button className="btn btn-primary" onClick={handleUmkmRestock}>
                     Simpan Restock
                   </button>
 

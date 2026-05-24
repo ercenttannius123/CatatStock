@@ -8,7 +8,15 @@ app = Flask(__name__)
 CORS(app)
 
 def train_model(kategori):
-    df = pd.read_csv("./Dataset/train.csv")
+    import zipfile
+    try:
+        with zipfile.ZipFile("./Dataset.zip") as z:
+            with z.open("train.csv") as f:
+                df = pd.read_csv(f)
+    except FileNotFoundError:
+        with zipfile.ZipFile("AI/Dataset.zip") as z:
+            with z.open("train.csv") as f:
+                df = pd.read_csv(f)
     df.columns = df.columns.str.strip().str.lower()
 
     df = df[df["store_nbr"] == 1]

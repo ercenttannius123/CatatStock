@@ -31,5 +31,17 @@ class Product(Base):
     stock = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, server_default=func.now())
 
+
+class Transaction(Base):
+    __tablename__ = 'transactions'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
+    type = Column(String(20), nullable=False)  # 'in' or 'out'
+    quantity = Column(Integer, nullable=False)
+    price = Column(Numeric(18, 2), nullable=False, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
