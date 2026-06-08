@@ -23,8 +23,14 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
     app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL')
     CORS(app)
+    
+    @app.route('/', methods=['GET'])
+    def home():
+        return jsonify({'message': 'CatatStock API is running!', 'status': 'ok'})
+    
     app.register_blueprint(auth_bp)
     app.register_blueprint(products_bp)
+    
     @app.route('/__routes', methods=['GET'])
     def _routes():
         routes = []
@@ -114,19 +120,3 @@ if __name__ == '__main__':
     except Exception:
         pass
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-# Debug helper: list routes when requested (development only)
-def _add_debug_routes(app):
-    @app.route('/__routes', methods=['GET'])
-    def _routes():
-        routes = []
-        for r in app.url_map.iter_rules():
-            routes.append({'rule': str(r), 'endpoint': r.endpoint, 'methods': sorted(list(r.methods))})
-        return jsonify(routes)
-
-
-# register debug routes when module loaded under __main__ flow
-try:
-    _add_debug_routes(create_app())
-except Exception:
-    pass
