@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import jwt
 import os
 
-from .models import SessionLocal, User
+from models import SessionLocal, User
 
 auth_bp = Blueprint('auth', __name__)
 
