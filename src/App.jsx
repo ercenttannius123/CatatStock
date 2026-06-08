@@ -1,39 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, { useEffect, useRef, useState } from 'react'
 import categoriesFromFile from './data/categories.json'
 import { Chart, registerables } from 'chart.js'
@@ -41,7 +5,7 @@ import { ResponsiveContainer, BarChart, PieChart, Pie, AreaChart, Area, Cell, Se
 import AuthPage from './AuthPage'
 Chart.register(...registerables)
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://catatstock-production.up.railway.app/';
 
 const pages = ['dashboard','stok','prediksi','restock','slowmoving','cashflow','input','monitoring']
 
