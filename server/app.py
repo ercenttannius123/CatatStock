@@ -12,10 +12,10 @@ try:
 except Exception:
     pyzbar_decode = None
 
-from .auth import auth_bp
-from .products import products_bp
-from .models import init_db
-from .migrate import ensure_product_image_columns
+from auth import auth_bp
+from products import products_bp
+from models import init_db
+from migrate import ensure_product_image_columns
 import pathlib
 
 def create_app():
