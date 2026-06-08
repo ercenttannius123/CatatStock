@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app
-from .models import SessionLocal, Product, User, Transaction
+from models import SessionLocal, Product, User, Transaction
 import jwt
 from datetime import datetime
 import json, urllib.request, urllib.error, pathlib
