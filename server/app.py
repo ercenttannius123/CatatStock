@@ -23,6 +23,11 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
     app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL')
     CORS(app)
+
+    @app.route('/', methods=['GET'])
+    def home():
+        return jsonify({'message': 'CatatStock API is running!', 'status': 'ok'})
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(products_bp)
     @app.route('/__routes', methods=['GET'])
