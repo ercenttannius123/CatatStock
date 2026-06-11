@@ -44,7 +44,6 @@ def create_app():
             data = request.get_json() or {}
             req_data = json.dumps(data).encode('utf-8')
             
-            # Forward request to AI server on port 5005
             req = urllib.request.Request(
                 'http://127.0.0.1:5005/predict',
                 data=req_data,
@@ -52,7 +51,6 @@ def create_app():
             )
             with urllib.request.urlopen(req, timeout=30) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
-                # cache last successful AI response for offline fallback
                 try:
                     cache_path = pathlib.Path(__file__).parent / 'ai_cache.json'
                     with cache_path.open('w', encoding='utf-8') as f:
@@ -61,13 +59,11 @@ def create_app():
                     pass
                 return jsonify(res_data)
         except urllib.error.URLError as e:
-            # if AI server is unreachable, try returning cached response
             try:
                 cache_path = pathlib.Path(__file__).parent / 'ai_cache.json'
                 if cache_path.exists():
                     with cache_path.open('r', encoding='utf-8') as f:
                         cached = json.load(f)
-                    # return cached response in same shape as AI server
                     if isinstance(cached, dict):
                         cached['_fallback'] = 'cached_response'
                         return jsonify(cached), 200
@@ -79,7 +75,6 @@ def create_app():
 
     @app.route('/decode_barcode', methods=['POST'])
     def decode_barcode():
-        # Accept multipart file upload or JSON with data URL
         try:
             img = None
             if 'file' in request.files:
@@ -109,9 +104,7 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    # initialize database tables if not present (SQLite fallback)
     try:
-        # attempt lightweight migration before creating tables
         try:
             ensure_product_image_columns()
         except Exception:
