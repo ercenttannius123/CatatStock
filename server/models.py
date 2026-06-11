@@ -32,7 +32,6 @@ class Product(Base):
     price_buy = Column(Numeric(18, 2), nullable=False, default=0)
     price_sell = Column(Numeric(18, 2), nullable=False, default=0)
     stock = Column(Integer, nullable=False, default=0)
-    # persisted 7-day average daily sales (includes zeros for days without sales)
     avg_daily_sales = Column(Numeric(10, 2), nullable=False, default=0)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -42,7 +41,7 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
-    type = Column(String(20), nullable=False)  # 'in' or 'out'
+    type = Column(String(20), nullable=False)
     quantity = Column(Integer, nullable=False)
     price = Column(Numeric(18, 2), nullable=False, default=0)
     created_at = Column(DateTime, server_default=func.now())
