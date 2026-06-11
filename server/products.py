@@ -54,7 +54,6 @@ def list_products():
         prods = db.query(Product).filter(Product.user_id == user_id).all()
         result = []
         for p in prods:
-            # compute days since last 'out' transaction (last sold)
             try:
                 last_out = db.query(Transaction).filter(Transaction.product_id == p.id, Transaction.user_id == user_id, Transaction.type == 'out').order_by(Transaction.created_at.desc()).first()
                 if last_out and last_out.created_at:
@@ -120,7 +119,6 @@ def create_product():
     price_sell = data.get('price_sell') if ('price_sell' in data) else None
     stock = data.get('stock') or 0
 
-    # Validation
     try:
         price_buy = float(price_buy)
         if price_sell is not None and str(price_sell).strip() != '':
@@ -153,9 +151,7 @@ def update_product(product_id):
     user_id = get_user_id_from_token(auth)
     if not user_id:
         return jsonify({'error': 'unauthorized'}), 401
-    # Support both JSON requests and multipart/form-data (FormData) from the frontend
     if request.form and len(request.form) > 0:
-        # form data (e.g., from FormData) - convert to dict
         data = request.form.to_dict()
     else:
         data = request.get_json() or {}
@@ -236,7 +232,7 @@ def create_transaction():
     
     data = request.get_json() or {}
     product_id = data.get('product_id')
-    tx_type = data.get('type')  # 'in' or 'out'
+    tx_type = data.get('type')
     quantity = data.get('quantity')
     
     if not product_id or not tx_type or not quantity:
@@ -264,16 +260,14 @@ def create_transaction():
         if tx_type == 'in':
             p.stock += quantity
             msg_log = f"[MONITORING LOG] User {user_id} RESTOCKED product '{p.name}' (ID: {p.id}). Stock: {old_stock} -> {p.stock} (+{quantity})"
-        else: # tx_type == 'out'
+        else:
             if p.stock < quantity:
                 return jsonify({'error': f"Stok tidak mencukupi! Sisa stok: {p.stock}"}), 400
             p.stock -= quantity
             msg_log = f"[MONITORING LOG] User {user_id} SOLD product '{p.name}' (ID: {p.id}). Stock: {old_stock} -> {p.stock} (-{quantity})"
             
-        # Log to console
         print(msg_log, flush=True)
         
-        # use selling price for stock-out, buying price for stock-in
         tx_price = p.price_sell if tx_type == 'out' else p.price_buy
         tx = Transaction(
             user_id=user_id,
@@ -301,7 +295,6 @@ def list_categories_from_dataset():
     """Return unique category names found in AI/Dataset.zip (train.csv).
     This endpoint is public and returns categories found in the AI/Dataset.zip.
     """
-    # accessible without auth so the frontend can populate category dropdowns
 
     try:
         import zipfile, pathlib
@@ -316,15 +309,12 @@ def list_categories_from_dataset():
                 names = [n for n in z.namelist() if n.lower().endswith('.csv')]
                 if not names:
                     return jsonify({'categories': []}), 200
-                # prefer train.csv if present
                 train_name = next((n for n in names if 'train' in n.lower()), names[0])
-                # read only family column to reduce memory
                 df = pd.read_csv(z.open(train_name), usecols=['family'])
                 df.columns = df.columns.str.strip().str.lower()
                 if 'family' in df.columns:
                     cats = sorted([c for c in df['family'].dropna().unique().tolist() if c])
         except Exception:
-            # fallback CSV parse without pandas
             import csv
             with zipfile.ZipFile(str(zip_path)) as z:
                 names = [n for n in z.namelist() if n.lower().endswith('.csv')]
@@ -385,12 +375,9 @@ def report_profit_today():
     from datetime import datetime, timedelta
     db = SessionLocal()
     try:
-        # use UTC day window
         today = datetime.utcnow().date()
         start = datetime(today.year, today.month, today.day)
         end = start + timedelta(days=1)
-
-        # join Transaction -> Product to get cost (price_buy)
         rows = db.query(Transaction, Product).join(Product, Transaction.product_id == Product.id)\
                  .filter(Transaction.user_id == user_id, Transaction.type == 'out', Transaction.created_at >= start, Transaction.created_at < end).all()
 
@@ -435,22 +422,17 @@ def product_level_predict(product_id):
         if p.user_id != user_id:
             return jsonify({'error': 'forbidden'}), 403
 
-        # collect recent 'out' transactions for this product and aggregate by day
         txs = db.query(Transaction).filter(Transaction.product_id == product_id, Transaction.user_id == user_id, Transaction.type == 'out').order_by(Transaction.created_at.desc()).all()
-        # build simple per-day series (most recent 30 days)
         series = []
         if txs:
-            # map date -> total sold
             daily = {}
             for tx in txs:
                 day = tx.created_at.date().isoformat()
                 daily[day] = daily.get(day, 0) + (tx.quantity or 0)
-            # sort by date asc
             keys = sorted(daily.keys())
             for k in keys[-30:]:
                 series.append(daily[k])
 
-        # proxy to AI server
         payload = {'timeseries': series} if series else {'kategori': p.category or 'BEVERAGES'}
         req = urllib.request.Request('http://127.0.0.1:5005/predict', data=json.dumps(payload).encode('utf-8'), headers={'Content-Type':'application/json'})
         try:
@@ -484,7 +466,6 @@ def _decode_with_tesseract(pil_img):
         text = pytesseract.image_to_string(pil_img)
         if not text:
             return None
-        # extract digits/word-like tokens
         toks = [t.strip() for t in text.split() if t.strip()]
         return toks[0] if toks else None
     except Exception:
@@ -494,15 +475,12 @@ def _decode_with_tesseract(pil_img):
 def _generate_preprocessed_variants(pil_img, dbg_dir, ts):
     variants = []
     try:
-        # original
         variants.append(('orig', pil_img))
-        # resized versions
         for scale in (1.5, 2.0, 3.0):
             w,h = pil_img.size
             imgr = pil_img.resize((int(w*scale), int(h*scale)), Image.LANCZOS)
             variants.append((f'resize_{scale}', imgr))
 
-        # contrast/enhance
         try:
             enh = ImageEnhance.Contrast(pil_img)
             for f in (1.5, 2.0, 3.0):
@@ -511,11 +489,9 @@ def _generate_preprocessed_variants(pil_img, dbg_dir, ts):
         except Exception:
             pass
 
-        # binarize and invert
         for name, img in list(variants):
             try:
                 g = img.convert('L')
-                # adaptive-like simple threshold via point
                 th = g.point(lambda p: 255 if p > 128 else 0)
                 variants.append((f'{name}_th', th.convert('RGB')))
                 inv = ImageOps.invert(g)
@@ -523,7 +499,6 @@ def _generate_preprocessed_variants(pil_img, dbg_dir, ts):
             except Exception:
                 continue
 
-        # save variants
         idx = 0
         for nm, im in variants:
             try:
@@ -571,14 +546,11 @@ def _find_candidate_crops_from_bytes(data_bytes, dbg_dir, ts):
             x2 = min(w, xs.max())
             y1 = max(0, ys.min())
             y2 = min(h, ys.max())
-            # filter by size
             area = (x2-x1)*(y2-y1)
             if area < (w*h)*0.001:
                 continue
-            # aspect ratio filter (barcodes tend to be wide)
             ar = (x2-x1)/max(1, (y2-y1))
             if ar < 1.2 and ar > 0.8:
-                # also allow near-square
                 pass
             padx = int((x2-x1)*0.2)
             pady = int((y2-y1)*0.4)
@@ -589,7 +561,6 @@ def _find_candidate_crops_from_bytes(data_bytes, dbg_dir, ts):
             crop = img[ya:yb, xa:xb]
             if crop.size == 0:
                 continue
-            # Save crop
             try:
                 outp = os.path.join(dbg_dir, f'proc_crop_{ts}_{idx}.png')
                 cv2.imwrite(outp, crop)
@@ -614,7 +585,6 @@ def scan_barcode():
         return jsonify({'error': 'unauthorized'}), 401
 
     dbg_dir = _ensure_dbg_dir()
-    # accept file under common keys ('file', 'image', 'photo') or raw body
     f = None
     if request.files:
         f = request.files.get('file') or request.files.get('image') or request.files.get('photo')
@@ -641,7 +611,6 @@ def scan_barcode():
 
     code_value = None
     if pil_img is not None:
-        # try multiple preprocessing variants
         variants = _generate_preprocessed_variants(pil_img, dbg_dir, ts)
         for name, img in variants:
             v = _decode_with_pyzbar(img)
@@ -656,7 +625,6 @@ def scan_barcode():
                 break
 
     if not code_value:
-        # try candidate crops using OpenCV
         crops = _find_candidate_crops_from_bytes(data, dbg_dir, ts)
         for i, crop in enumerate(crops):
             v = _decode_with_pyzbar(crop)
@@ -673,10 +641,7 @@ def scan_barcode():
     if not code_value:
         return jsonify({'status': 'not_found', 'decode_attempts': decode_attempts}), 404
 
-    # Normalize code
     code_value = str(code_value).strip()
-
-    # read requested transaction type and quantity from form (defaults)
     req_type = (request.form.get('type') or request.values.get('type') or 'in').lower()
     try:
         qty = int(request.form.get('quantity') or request.values.get('quantity') or 1)
@@ -710,7 +675,6 @@ def scan_barcode():
             msg_log = f"[MONITORING LOG] User {user_id} SOLD product '{p.name}' (ID: {p.id}). Stock: {old_stock} -> {p.stock} (-{qty})"
 
         print(msg_log, flush=True)
-        # for scanned transactions: use selling price for out, buying price for in
         tx_price = p.price_sell if req_type == 'out' else p.price_buy
         tx = Transaction(user_id=user_id, product_id=p.id, type=req_type, quantity=qty, price=tx_price, created_at=datetime.utcnow())
         db.add(tx)
