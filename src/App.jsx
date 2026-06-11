@@ -111,14 +111,12 @@ export default function App(){
           if (/^(https?:)?\/\//i.test(t)) return true
           if (t.startsWith('/')) return true
           if (/\.(jpe?g|png|gif|webp|svg|bmp)(\?|$)/i.test(t)) return true
-          // fallback: contains a slash and a dot (path-like)
           return t.includes('/') && t.includes('.')
         }
 
         const stripHtml = (s) => (typeof s === 'string') ? s.replace(/<[^>]*>/g, '').trim() : s
         const extractSrc = (s) => {
           if (!s || typeof s !== 'string') return s
-          // match <img src="..."> or <a href="...">
           const mImg = s.match(/<img[^>]+src=["']([^"']+)["']/i)
           if (mImg && mImg[1]) return mImg[1].trim()
           const mA = s.match(/<a[^>]+href=["']([^"']+)["']/i)
@@ -133,7 +131,6 @@ export default function App(){
           let imageUrl = null
           if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim()) imageUrl = p.image_url
           else if (isLikelyUrl(cleaned)) {
-            // prepend API origin for root-relative paths
             if (cleaned.startsWith('/')) imageUrl = `${API_URL}${cleaned}`
             else imageUrl = cleaned
           } else if (p.has_image) {
@@ -176,7 +173,6 @@ export default function App(){
         const data = await res.json()
         if (cancelled) return
         setTransactions(Array.isArray(data) ? data : [])
-        // fetch profit today after loading transactions
         try {
           const r = await fetch(`${API_URL}/reports/profit_today`, { headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` } })
           if (r.ok) {
@@ -206,11 +202,9 @@ export default function App(){
       document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
       localStorage.setItem('isDarkMode', isDarkMode ? 'true' : 'false')
     } catch (e) {
-      // ignore
     }
   }, [isDarkMode])
 
-  // Temporary global error catcher to surface runtime errors in the UI
   useEffect(() => {
     function handleErr(e) {
       try { console.error('Captured error', e) } catch (ex) {}
@@ -229,7 +223,6 @@ export default function App(){
   }, [])
 
   const totalProductsCount = products.length
-  // compute AI daily boost per product (10% of aggregated AI prediction, evenly distributed)
   const aiTotalPred = (() => {
     if (!aiPrediction) return 0
     if (typeof aiPrediction === 'number') return aiPrediction
@@ -238,7 +231,6 @@ export default function App(){
     return 0
   })()
 
-  // per-category AI predictions (if available) and per-category daily boost
   const aiPredByCategory = (aiPrediction && typeof aiPrediction === 'object' && !Array.isArray(aiPrediction)) ? aiPrediction : {}
   const productsCountByCategory = products.reduce((acc, p) => { const k = p.category || 'Lainnya'; acc[k] = (acc[k]||0) + 1; return acc }, {})
   const aiDailyBoostPerCategory = {}
@@ -249,8 +241,6 @@ export default function App(){
   })
 
   const aiDailyBoostPerProduct = products.length > 0 ? Math.round((aiTotalPred * 0.1) / products.length) : 0
-
-  // build sold counts per product for a recent window (used to compute avg sale/day)
   const windowDays = 30
   const now = new Date()
   const soldMap = {}
@@ -265,16 +255,13 @@ export default function App(){
       const qty = Number(t.quantity !== undefined ? t.quantity : (t.qty !== undefined ? t.qty : 1)) || 0
       soldMap[pid] = (soldMap[pid] || 0) + qty
     } catch (e) {
-      // ignore malformed transaction
     }
   })
 
   const getAvgSaleFromHistoryOrAi = (p) => {
     const pid = String(p.rawId !== undefined ? p.rawId : p.id)
     const sold = soldMap[pid] || 0
-    // historical average (per day) based on windowDays
     const histAvg = sold > 0 ? (sold / windowDays) : 0
-    // prefer per-category AI boost when available
     const category = p.category || 'Lainnya'
     const aiBoostForCat = (aiDailyBoostPerCategory && aiDailyBoostPerCategory[category]) ? aiDailyBoostPerCategory[category] : (aiDailyBoostPerProduct || 0)
     const chosen = (aiBoostForCat > histAvg && aiBoostForCat > 0) ? aiBoostForCat : histAvg
@@ -288,12 +275,9 @@ export default function App(){
     return daysLeft <= 3
   })
   const criticalCount = criticalProducts.length
-  // slow-moving now determined by days not sold > 30 (from backend's days_not_sold)
   const slowMovingProducts = products.filter(p => (p.daysNotSold || 0) > 30)
   const slowMovingCount = slowMovingProducts.length
-  // total modal tertahan: sum of buy price * stock for slow-moving products
   const totalModalTertahan = slowMovingProducts.reduce((s, p) => s + (((p.price || p.price === 0) ? Number(p.price) : 0) * (p.stock || 0)), 0)
-  // chart data for slow-moving products (plot stock for each slow-moving product)
   const slowMovingChartData = slowMovingProducts.slice().sort((a,b)=>(b.stock||0)-(a.stock||0)).map(p => ({ name: p.name || '-', value: Number(p.stock || 0) }))
   const akanHabisProducts = products.filter(p => {
     const baseAvgSale = getAvgSaleFromHistoryOrAi(p)
@@ -304,16 +288,10 @@ export default function App(){
   const akanHabisCount = akanHabisProducts.length
   const totalStockValue = products.reduce((s, p) => s + ((p.price || p.price === 0 ? p.price : 0) * (p.stock || 0)), 0)
   const lowStockList = products.slice().sort((a,b)=> (a.stock||0) - (b.stock||0)).slice(0,3)
-
-  // derive categories: merge static file categories with categories found in loaded products
   const derivedCategories = Array.from(new Set(products.map(p => (p.category || '').toString().trim()).filter(Boolean)))
   const fileCats = Array.isArray(categoriesFromFile) ? categoriesFromFile.map(c=>c.toString().trim()).filter(Boolean) : []
   const allCats = Array.from(new Set([...(fileCats || []), ...derivedCategories])).sort((a,b)=> a.localeCompare(b))
   const categoriesList = ['Semua', ...allCats]
-
-  // Derived dashboard/calculation values that depend on products/totalStockValue
-
-  // compute estimated avg sale and days left per product, derive status (heuristic)
   const productStatus = products.map(p => {
     const avgSale = Math.max(1, getAvgSaleFromHistoryOrAi(p))
     const daysLeft = Math.max(0, Math.ceil((p.stock || 0) / Math.max(1, avgSale)))
@@ -324,7 +302,6 @@ export default function App(){
   })
   const statusList = productStatus.filter(x => x.status)
 
-  // If AI prediction output exists, try to derive statuses from AI predictions and merge
   let aiDerivedStatusList = []
   try {
     if (aiPrediction && Array.isArray(aiPrediction) && aiPrediction.length > 0) {
@@ -352,7 +329,6 @@ export default function App(){
     aiDerivedStatusList = []
   }
 
-  // prefer AI-derived statuses when available, otherwise use heuristic statusList
   const combinedStatusList = (aiDerivedStatusList && aiDerivedStatusList.length > 0) ? aiDerivedStatusList : statusList
 
   const emergencyList = combinedStatusList.filter(x => x.status === 'darurat').sort((a,b)=>a.daysLeft - b.daysLeft)
@@ -360,7 +336,6 @@ export default function App(){
 
   const criticalStatusItems = combinedStatusList.filter(x => x.status === 'darurat' || x.status === 'menipis').sort((a,b) => (a.daysLeft||0) - (b.daysLeft||0))
 
-  // Compute restock need per product: restock = max(0, round(avgSale*7 - stock))
   const restockPerProduct = products.map(p => {
     const avgSale = Math.max(1, getAvgSaleFromHistoryOrAi(p))
     const restock = Math.max(0, Math.round((avgSale || 0) * 7 - (p.stock || 0)))
@@ -368,8 +343,6 @@ export default function App(){
   })
   const totalRestock = restockPerProduct.reduce((s, r) => s + r.restock, 0)
   const potensiKehilangan = restockPerProduct.reduce((s, r) => s + r.restock * r.price, 0)
-
-  // Build restock suggestions: prefer AI prediction output when available
   const restockSuggestions = (() => {
     try {
       const crit = Array.isArray(combinedStatusList) ? combinedStatusList : []
@@ -395,7 +368,6 @@ export default function App(){
     }
   })()
 
-  // Prebuild restock card elements to simplify JSX and avoid inline IIFEs
   const restockCards = (() => {
     try {
       let displaySugs = (restockSuggestions && restockSuggestions.length > 0 ? restockSuggestions : [])
@@ -430,7 +402,6 @@ export default function App(){
     }
   })()
 
-  // Top products by sales revenue (aggregate from transactions)
   const topProducts = (() => {
     try {
       const rev = {}
@@ -452,7 +423,6 @@ export default function App(){
   const topProductColors = ['#60A5FA', '#34D399', '#FBBF24', '#A78BFA', '#F9A8D4']
   const renderTopProductPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const percentValue = Math.round(percent * 100)
-    // only show label for slices with >5% contribution
     if (percentValue <= 5) return null
     const radius = innerRadius + (outerRadius - innerRadius) * 0.55
     const x = cx + radius * Math.cos(-midAngle * Math.PI / 180)
@@ -473,7 +443,6 @@ export default function App(){
     )
   }
 
-  // Custom tooltip for donut slices
   const DonutTooltip = ({ active, payload }) => {
     if (!active || !payload || !payload.length) return null
     const p = payload[0]
@@ -488,14 +457,11 @@ export default function App(){
     )
   }
 
-  // category distribution (for profit/ROI charts)
   const categorySums = {}
   products.forEach(p=>{ const k = p.category || 'Lainnya'; categorySums[k] = (categorySums[k]||0) + (p.value||0) })
   const totalForCats = Object.values(categorySums).reduce((s,v)=>s+v,0) || 1
   const profitChart = Object.entries(categorySums).map(([name,val])=>({ name, percent: Math.round(val / totalForCats * 100) }))
   const roiData = profitChart
-
-  // keep a larger set of products here, but limit visible items in the UI to 5 with scrolling
   const modalData = products.slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,50).map(p=>({ name: p.name, value: `Rp ${Math.round(p.value||0).toLocaleString()}`, percent: Math.round(((p.value||0)/ (totalForCats||1)) * 100) }))
 
   const cashflowChart = (() => {
@@ -539,19 +505,15 @@ export default function App(){
     return chart
   })()
 
-  // build sales trend data from transactions (use 'out' = sales, sum quantities)
   const salesData = (() => {
     const dayArr = new Array(7).fill(0)
     const weekArr = new Array(4).fill(0)
     const monthArr = new Array(12).fill(0)
     const yearArr = trendChartLabels.year.map(_ => 0)
 
-    // helper: parse transaction date to Date
     const txDate = (t) => t && t.created_at ? new Date(t.created_at) : null
-
-    // DAY: current week Monday..Sunday
     const now = new Date()
-    const dayOfWeek = (d) => (d.getDay() + 6) % 7 // Monday=0..Sunday=6
+    const dayOfWeek = (d) => (d.getDay() + 6) % 7
     const monday = new Date(now)
     monday.setDate(now.getDate() - dayOfWeek(now))
     monday.setHours(0,0,0,0)
@@ -560,32 +522,24 @@ export default function App(){
       if (!t || t.type !== 'out') return
       const d = txDate(t)
       if (!d) return
-      // compute revenue (omset) for this transaction: prefer total_price if present
       const amount = Number(t.total_price !== undefined ? t.total_price : ((t.price || 0) * (t.quantity || 0))) || 0
-      // day index
       const dayIndex = Math.floor((d - monday) / (24*60*60*1000))
       if (dayIndex >= 0 && dayIndex < 7) {
         dayArr[dayIndex] += amount
       }
-      // week index (last 4 weeks)
       const diffDays = Math.floor((now - d) / (24*60*60*1000))
       const weekIndex = Math.floor(diffDays / 7)
       if (weekIndex >= 0 && weekIndex < 4) {
-        // weekArr[0] = this week, weekArr[1] = 1 week ago, keep order most recent first
         weekArr[3 - weekIndex] += amount
       }
-      // month index (0=Jan..11=Dec of current year)
       if (d.getFullYear() === now.getFullYear()) {
         monthArr[d.getMonth()] += amount
       }
-      // year index
       const yIndex = trendChartLabels.year.indexOf(String(d.getFullYear()))
       if (yIndex !== -1) {
         yearArr[yIndex] += amount
       }
     })
-
-    // ensure arrays are numbers (no NaN)
     return { day: dayArr.map(n => Math.round(n||0)), week: weekArr.map(n=>Math.round(n||0)), month: monthArr.map(n=>Math.round(n||0)), year: yearArr.map(n=>Math.round(n||0)) }
   })()
 
@@ -614,7 +568,6 @@ export default function App(){
     return db - da
   }).slice(0, 10)
 
-  // compute profit per period from transactions (revenue - cost)
   const profitPeriods = (() => {
     const now = new Date()
     const isSameDay = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate()
@@ -625,19 +578,14 @@ export default function App(){
       if (!d) return
       const qty = Number(t.quantity || 0)
       const rev = Number(t.total_price !== undefined ? t.total_price : ((t.price || 0) * qty)) || 0
-      // determine cost: prefer product.buy price from products list
       const prod = products.find(p => String(p.rawId) === String(t.product_id) || String(p.id) === String(t.product_id) || String(p.product_code) === String(t.product_code))
       const unitCost = (prod && (prod.price || prod.price === 0)) ? Number(prod.price) : (t.cost || 0)
       const cost = unitCost * qty
 
-      // day (today)
       if (isSameDay(d, now)) { dayRev += rev; dayCost += cost }
-      // week: last 7 days including today
       const diffDays = Math.floor((now - d) / (24*60*60*1000))
       if (diffDays >= 0 && diffDays < 7) { weekRev += rev; weekCost += cost }
-      // month: same calendar month
       if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) { monthRev += rev; monthCost += cost }
-      // year
       if (d.getFullYear() === now.getFullYear()) { yearRev += rev; yearCost += cost }
     })
     return {
@@ -648,7 +596,6 @@ export default function App(){
     }
   })()
 
-  // compute cash in/out/net per period from transactions
   const cashPeriods = (() => {
     const now = new Date()
     const isSameDay = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate()
@@ -658,23 +605,19 @@ export default function App(){
       const d = t.created_at ? new Date(t.created_at) : null
       if (!d) return
       const amount = Number(t.total_price !== undefined ? t.total_price : ((t.price || 0) * (t.quantity || 0))) || 0
-      // day
       if (isSameDay(d, now)) {
         if (t.type === 'out') dayIn += amount
         else if (t.type === 'in') dayOut += amount
       }
-      // week (last 7 days)
       const diffDays = Math.floor((now - d) / (24*60*60*1000))
       if (diffDays >= 0 && diffDays < 7) {
         if (t.type === 'out') weekIn += amount
         else if (t.type === 'in') weekOut += amount
       }
-      // month
       if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
         if (t.type === 'out') monthIn += amount
         else if (t.type === 'in') monthOut += amount
       }
-      // year
       if (d.getFullYear() === now.getFullYear()) {
         if (t.type === 'out') yearIn += amount
         else if (t.type === 'in') yearOut += amount
@@ -692,7 +635,6 @@ export default function App(){
     const now = new Date()
     const monthNames = trendChartLabels.month
     if (tab === 'day') {
-      // current week Monday..Sunday
       const d = new Date(now)
       const dayOfWeek = (d.getDay() + 6) % 7
       const monday = new Date(d)
@@ -705,13 +647,12 @@ export default function App(){
       })
     }
     if (tab === 'week') {
-      // last 4 weeks labels (start date)
       return (data.week || []).map((_, i) => {
         const start = new Date(now)
         const weeksBack = 3 - i
         start.setDate(now.getDate() - weeksBack * 7)
         const s = new Date(start)
-        s.setDate(start.getDate() - ((start.getDay() + 6) % 7)) // align to Monday
+        s.setDate(start.getDate() - ((start.getDay() + 6) % 7))
         const e = new Date(s)
         e.setDate(s.getDate() + 6)
         const sStr = s.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })
@@ -722,7 +663,6 @@ export default function App(){
     if (tab === 'month') {
       return (data.month || []).map((_, i) => monthNames[i] || `B${i+1}`)
     }
-    // year
     return (data.year || []).map((_, i) => trendChartLabels.year[i] || String(new Date().getFullYear() - (trendChartLabels.year.length - 1 - i)))
   }
 
@@ -832,13 +772,11 @@ export default function App(){
     return { text: 'Aman', class: 'bs' }
   }
 
-  // Safe map helper: ensures we can call .map on possibly undefined values
   function safeMap(v) {
     if (!v) return []
     return Array.isArray(v) ? v : []
   }
 
-  // Helper: return a short emoji or box fallback for product without usable image
   function getProductEmoji(p) {
     try {
       const s = (p && (p.image || ''))
@@ -846,9 +784,7 @@ export default function App(){
         const t = s.trim()
         if (!t) return '📦'
         if (t.length <= 2) return t
-        // if it looks like data URL or html or url, prefer box fallback here
         if (/^(data:image|https?:|\/|<)/i.test(t)) return '📦'
-        // otherwise, if it's short enough, show it
         return t.length <= 3 ? t : '📦'
       }
     } catch (e) {}
@@ -897,7 +833,6 @@ export default function App(){
     )
   }
 
-  // Fetch products from backend and set state
   async function fetchProducts() {
     try {
       const res = await fetch(`${API_URL}/products`, {
@@ -908,7 +843,6 @@ export default function App(){
         return
       }
       const data = await res.json()
-      // normalize image fields (support HTML snippets, anchor tags, root-relative paths)
       const isLikelyUrl = (s) => {
         if (!s || typeof s !== 'string') return false
         const t = s.trim()
@@ -970,13 +904,10 @@ export default function App(){
       setAiError(null)
       setAiLoading(true)
       setAiPrediction(null)
-      // determine categories to request: if a specific category provided, use it;
-      // otherwise request for all categories found in current products
       const categories = (kategori && String(kategori).trim())
         ? [kategori]
         : Array.from(new Set(products.map(p => (p.category || 'Lainnya'))))
 
-      // fetch predictions for all categories in parallel and combine results
       const fetches = categories.map(cat => fetch(`${API_URL}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -990,18 +921,15 @@ export default function App(){
       }))
 
       const results = await Promise.all(fetches)
-      // build per-category prediction map. Server may return numeric `prediksi` or an array.
       const predByCat = {}
       results.forEach((r, idx) => {
         const cat = categories[idx] || 'Lainnya'
         if (!r) { predByCat[cat] = 0; return }
         if (Array.isArray(r.prediksi)) {
-          // sum numeric entries
           predByCat[cat] = r.prediksi.reduce((s, it) => s + (typeof it === 'number' ? it : 0), 0)
         } else if (typeof r.prediksi === 'number') {
           predByCat[cat] = r.prediksi
         } else if (r.prediksi && typeof r.prediksi === 'object' && typeof r.prediksi.prediksi === 'number') {
-          // sometimes wrapper
           predByCat[cat] = r.prediksi.prediksi
         } else {
           predByCat[cat] = 0
@@ -1037,7 +965,6 @@ export default function App(){
           await fetchProducts()
           showToast('Produk berhasil ditambahkan (server)')
         } else {
-          // fallback to local add
           const newId = 'P' + String(products.length + 1).padStart(3, '0')
           const newProduct = { id: newId, ...product, sellPrice: (product.priceSell !== undefined ? product.priceSell : product.price), value: product.price * product.stock }
           setProducts(prev => [...prev, newProduct])
@@ -1055,7 +982,6 @@ export default function App(){
   function editProduct(product) {
     ;(async ()=>{
       try {
-        // try PUT to backend if rawId exists
         const rawId = product.rawId || null
         if (rawId) {
           const res = await fetch(`${API_URL}/products/${rawId}`, {
@@ -1067,7 +993,6 @@ export default function App(){
             await fetchProducts()
             showToast('Produk berhasil diupdate (server)')
           } else {
-            // fallback local
             const updated = products.map(p => p.id === product.id ? { ...product, sellPrice: (product.priceSell !== undefined ? product.priceSell : product.price), value: product.price * product.stock } : p)
             setProducts(updated)
             showToast('Produk diupdate lokal (server tidak mendukung)')
@@ -1129,7 +1054,7 @@ export default function App(){
 
   function restockNow(product) {
     setRestockProduct(product.name)
-    setRestockQuantity(Math.max(50 - product.stock, 10)) // suggest to bring to 50 or add 10
+    setRestockQuantity(Math.max(50 - product.stock, 10))
     setShowRestockModal(true)
   }
 
@@ -1150,7 +1075,6 @@ export default function App(){
             await fetchProducts()
             showToast(`Restock ${restockProduct} berhasil (server)`)
           } else {
-            // fallback local
             const updated = products.map(p => p.name === restockProduct ? { ...p, stock: p.stock + restockQuantity, value: p.price * (p.stock + restockQuantity) } : p)
             setProducts(updated)
             showToast(`Restock ${restockProduct} berhasil (lokal)`)
@@ -1183,7 +1107,6 @@ export default function App(){
       setTransactions(txs)
 
       try {
-        // compute last sale date per product from transactions (type 'out')
         const lastSaleMap = {}
         txs.forEach(t => {
           if (!t || t.type !== 'out') return
@@ -1193,7 +1116,6 @@ export default function App(){
           if (!lastSaleMap[pid] || lastSaleMap[pid] < d) lastSaleMap[pid] = d
         })
         const now = new Date()
-        // update products state with computed daysNotSold
         setProducts(prev => prev.map(p => {
           const key = p.rawId !== undefined ? String(p.rawId) : String(p.id)
           const last = lastSaleMap[key]
@@ -1245,7 +1167,6 @@ export default function App(){
     }
   }
 
-  // Quick-scan submit: find product by barcode and reuse saveTransaction flow
   async function handleScanSubmit(type) {
     try {
       if (!barcodeValue || !barcodeValue.trim()) {
@@ -1253,17 +1174,14 @@ export default function App(){
         return
       }
       const code = barcodeValue.trim()
-      // find product by product_code or id
       const prod = products.find(p => String(p.product_code) === code || String(p.rawId) === code || String(p.id) === code)
       if (!prod) {
         showToast('Produk tidak ditemukan untuk barcode tersebut')
         return
       }
-      // set manual input states and reuse saveTransaction
       setInputProductId(String(prod.rawId))
       setInputTxType(type)
       setInputQty(Math.max(1, Number(scanQty) || 1))
-      // attempt to POST same as saveTransaction
       const res = await fetch(`${API_URL}/transactions`, {
         method: 'POST',
         headers: {
@@ -1287,15 +1205,6 @@ export default function App(){
       showToast('Gagal memproses scan')
     }
   }
-
-  
-
-
-
-
-
-
-
 
 
   function ProductForm({ product, onSubmit, onCancel, onDelete }) {
