@@ -37,7 +37,6 @@ const RegisterForm = ({ onSwitch, onLogin }) => {
             setErrors(prev => ({ ...prev, submit: data.error || 'Registration failed' }));
             return;
           }
-          // Registration successful -> store name/email temporarily and switch to Login view
           try {
             if (name) sessionStorage.setItem('preRegName', name)
             if (email) sessionStorage.setItem('preRegEmail', email)
