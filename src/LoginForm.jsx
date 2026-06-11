@@ -44,7 +44,6 @@ const LoginForm = ({ onSwitch, onLogin }) => {
             if (data.name) userObj.name = data.name;
             if (data.username) userObj.username = data.username;
 
-            // try to populate name from sessionStorage (pre-registered) if missing
             if (!userObj.name) {
               const preName = sessionStorage.getItem('preRegName')
               if (preName) {
@@ -53,7 +52,6 @@ const LoginForm = ({ onSwitch, onLogin }) => {
               }
             }
 
-            // if still missing name, call /me with token to fetch authoritative user data from DB
             if (!userObj.name && data.token) {
               try {
                 const meRes = await fetch(`${API_URL}/me`, {
@@ -66,7 +64,6 @@ const LoginForm = ({ onSwitch, onLogin }) => {
               } catch (e) {}
             }
 
-            // fallback to local-part of email as username
             if (!userObj.name && !userObj.username && email) {
               userObj.username = email.includes('@') ? email.split('@')[0] : email
             }
