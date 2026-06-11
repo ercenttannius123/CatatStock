@@ -1,4 +1,4 @@
-/* Converted from original HTML style block */
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
   --bg: #ffffff;
@@ -19,7 +19,6 @@
   --blue: #185FA5;
   --radius: 8px;
   --radius-lg: 12px;
-  /* Unified design tokens */
   --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.1);
@@ -86,7 +85,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .card-title { font-size: 14px; font-weight: 500; color: var(--text); }
 .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: var(--shadow-sm); }
 .card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); transition: all 0.2s ease; }
-/* card accents removed — reverted to original style */
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .metric-card { 
   background: var(--card-bg); 
@@ -277,7 +275,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .compact-card { padding: 14px; }
 .compact-list-scroll { max-height: 340px; overflow-y: auto; padding-right: 6px; }
 .restock-list-scroll { max-height: 300px; overflow-y: auto; padding-right: 6px; }
-/* Modal/penyerapan list: show approx 5 items then scroll for the rest */
 .modal-list-scroll { max-height: 240px; overflow-y: auto; padding-right: 6px; }
 .side-stack { display: grid; gap: 10px; }
 .insight-grid { display: grid; gap: 10px; }
@@ -398,7 +395,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   flex-shrink: 0;
 }
 
-/* Added: compact table defaults and dashboard layout tokens */
 .compact-table{
   width:100%;
   border-collapse:collapse;
@@ -421,10 +417,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   text-align:center;
 }
 
-/* Ensure product column content lines up exactly under the PRODUK header */
 .compact-table th:nth-child(2),
 .compact-table td:nth-child(2) {
-  padding-left: 14px; /* consistent left padding for header and cells */
+  padding-left: 14px;
   padding-right: 12px;
   text-align: left;
 }
@@ -479,7 +474,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .chart-wrapper{height:240px}
 .two-col.dashboard-equal .chart-wrapper{height:100%}
 
-/* small tweaks for compactness */
 .top-chart-button{padding:6px 10px;border-radius:10px;border:1px solid var(--border2);background:transparent;cursor:pointer}
 .top-chart-button.active{background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.18)}
 
@@ -826,9 +820,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .top-products-rank-top { background: var(--green); color: white; }
 .best-seller-badge { background: rgba(255,255,255,0.9); color: var(--red); font-size: 10px; padding: 4px 8px; border-radius: 999px; }
 
-/* ====== DARK MODE ENHANCEMENTS ====== */
 [data-theme="dark"] {
-  /* Dashboard Summary Cards */
   --metric-card-bg: #18181b;
   --metric-card-border: 1px solid #27272a;
   --metric-card-shadow: 0 2px 8px rgba(0,0,0,0.25);
@@ -854,7 +846,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 
-/* Dark Mode Scrollbars */
 [data-theme="dark"] .compact-list-scroll::-webkit-scrollbar,
 [data-theme="dark"] .restock-list-scroll::-webkit-scrollbar,
 [data-theme="dark"] .modal-list-scroll::-webkit-scrollbar,
@@ -888,14 +879,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   background: #52525b;
 }
 
-/* Dark Mode Red Badges */
 [data-theme="dark"] .bd {
   background: rgba(239,68,68,0.12);
   color: #f87171;
   border: 1px solid rgba(239,68,68,0.2);
 }
 
-/* Dark Mode Status Badges */
 [data-theme="dark"] .bw {
   background: rgba(251,146,60,0.12);
   color: #fb923c;
@@ -914,7 +903,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   border: 1px solid rgba(59,130,246,0.2);
 }
 
-/* Dark Mode Insight Cards */
 [data-theme="dark"] .dashboard-insight-grid .card {
   background: #18181b;
   border: 1px solid #27272a;
@@ -929,7 +917,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 [data-theme="dark"] .insight-item-info { background: rgba(59,130,246,0.12); border-left-color: rgba(59,130,246,0.4); }
 [data-theme="dark"] .insight-item-sales { background: rgba(16,185,129,0.12); border-left-color: rgba(16,185,129,0.4); }
 
-/* Dark Mode Sidebar */
 [data-theme="dark"] .sidebar {
   background: #0f172a;
 }
@@ -942,7 +929,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   background: #111111;
 }
 
-/* Dark Mode Insight Item */
 [data-theme="dark"] .insight-item {
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
@@ -952,13 +938,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: #86efac;
 }
 
-/* Dark Mode Product Row */
 [data-theme="dark"] .prod-row,
 [data-theme="dark"] .restock-row {
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
-/* Improve table contrast and hover for dark mode */
 [data-theme="dark"] .compact-table tbody tr {
   border-bottom: 1px solid rgba(255,255,255,0.04);
   background: transparent;
@@ -980,19 +964,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: var(--text3);
 }
 
-/* Make category badges slightly more visible on dark background */
 [data-theme="dark"] .product-category-badge {
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.04);
   color: var(--text2);
 }
 
-/* Prediction table row hover consistency */
 [data-theme="dark"] .prediction-table tbody tr:hover {
   background: rgba(255,255,255,0.02);
 }
 
-/* Dark Mode Toggle Switch */
 [data-theme="dark"] .toggle-track {
   background: #27272a;
 }
@@ -1005,13 +986,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   background: rgba(34,197,94,0.3);
 }
 
-/* Dark Mode Chart Elements */
 [data-theme="dark"] .chart-wrapper,
 [data-theme="dark"] .chart-panel {
   background: transparent;
 }
 
-/* Dark-mode table header and cells contrast improvements */
 [data-theme="dark"] .compact-table th,
 [data-theme="dark"] .compact-table td {
   color: var(--text2);
@@ -1027,7 +1006,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: var(--text);
 }
 
-/* Make product images more visible in dark mode */
 [data-theme="dark"] #produkTable td:first-child img {
   box-shadow: 0 1px 0 rgba(255,255,255,0.02), 0 2px 12px rgba(0,0,0,0.6) inset;
   background: rgba(255,255,255,0.03);
@@ -1035,7 +1013,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   border-radius: 12px;
 }
 
-/* Slightly increase emphasis for product names vs meta code */
 [data-theme="dark"] #produkTable .product-name {
   color: var(--text);
 }
@@ -1043,7 +1020,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: var(--text3);
 }
 
-/* Prediksi table badge visibility */
 [data-theme="dark"] .prediction-table .badge,
 [data-theme="dark"] #prediksiTable .badge {
   background: rgba(255,255,255,0.03);
@@ -1051,7 +1027,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: var(--text2);
 }
 
-/* Dark Mode Top Products Section */
 [data-theme="dark"] .top-products-item {
   background: #18181b;
   border: 1px solid #27272a;
@@ -1068,7 +1043,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: white;
 }
 
-/* Prediksi table dark-mode tweaks: improve header, rows, badges and action buttons */
 [data-theme="dark"] .prediction-header {
   display: flex;
   align-items: center;
@@ -1104,7 +1078,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: var(--text2);
 }
 
-/* Ensure product info in prediksi table aligns left under header */
 [data-theme="dark"] #prediksiTable td:nth-child(2) .prediksi-product-info,
 [data-theme="dark"] #prediksiTable td:nth-child(2) .prediksi-product-info .product-name-row {
   align-items: flex-start;
@@ -1116,7 +1089,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: #f87171;
 }
 
-/* Dark Mode Button */
 [data-theme="dark"] .btn {
   border-color: #27272a;
 }
@@ -1141,14 +1113,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   color: #86efac;
 }
 
-/* Dark Mode Restock AI Card */
 [data-theme="dark"] .restock-ai-card {
   background: #18181b;
   border: 1px solid #27272a;
   box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 
-/* Dark Mode Warning Card */
 [data-theme="dark"] .warning-card {
   background: #18181b;
   border: 1px solid #27272a;
@@ -1234,12 +1204,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .recharts-tooltip-wrapper {
   font-size: 12px;
 }
-
-/* UMKM styles removed */
-
-/* =========================
-   QUICK INPUT REDESIGN
-========================= */
 
 .quick-input-grid {
   display: grid;
@@ -1343,8 +1307,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     width: 100%;
   }
 }
-
-/* ===== FINAL POLISH SLOW MOVING ===== */
 
 .metric-card {
   justify-content: center;
@@ -1567,17 +1529,13 @@ input:focus, select:focus { border-color: var(--green); }
 .info-box { background: var(--bg2); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; color: var(--text3); margin-top: 14px; }
 .sep { border: none; border-top: 0.5px solid var(--border); margin: 12px 0; }
 
-/* THEME & TOPBAR ENHANCEMENTS */
 .topbar-divider { width: 1px; height: 16px; background: var(--border); }
 .theme-icon { width: 16px; height: 16px; stroke-width: 2; opacity: 0.7; flex-shrink: 0; }
 .btn-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0.5px solid var(--border2); background: transparent; border-radius: var(--radius); cursor: pointer; color: var(--text2); transition: all 0.2s; flex-shrink: 0; }
 .btn-icon:hover { background: var(--bg2); color: var(--text); border-color: var(--green); }
 .btn-icon svg { width: 14px; height: 14px; stroke-width: 2; }
 
-/* SMOOTH TRANSITIONS */
 .app, .sidebar, .main, .topbar, .card, input[type=text], input[type=number], select, textarea, .toggle-track { transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease; }
-
-/* MODALS */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .modal { background: var(--bg); border-radius: var(--radius-lg); width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 0; }
@@ -1666,7 +1624,6 @@ input:focus, select:focus { border-color: var(--green); }
   margin: 0;
 }
 
-/* Ensure all number inputs hide spinners */
 input[type="number"] {
   -moz-appearance: textfield;
 }
@@ -1937,8 +1894,6 @@ input[type="number"]::-webkit-inner-spin-button {
   padding: 12px 14px;
 }
 
-/* Ensure table headers and cells are left-aligned like Semua Produk
-   Keep the first column (images) centered. Badges follow left alignment. */
 .compact-table th,
 .compact-table td,
 #prediksiTable th,
@@ -1949,7 +1904,6 @@ input[type="number"]::-webkit-inner-spin-button {
   padding-left: 16px;
 }
 
-/* center only the first column (gambar) in product-like tables */
 #produkTable td:first-child,
 #prediksiTable td:first-child,
 .compact-table td:first-child {
@@ -1994,8 +1948,6 @@ input[type="number"]::-webkit-inner-spin-button {
   max-width: 100%;
 }
 
-/* Ensure Produk column content is anchored to the left under the header
-   Use high-specificity selector so this wins over generic .product-cell rules */
 #produkTable td:nth-child(2) .product-cell,
 #produkTable td:nth-child(2) .product-name-row,
 #produkTable td:nth-child(2) .product-meta-row {
@@ -2009,7 +1961,6 @@ input[type="number"]::-webkit-inner-spin-button {
   text-align: left;
 }
 
-/* small left padding so text lines up nicely with header text */
 #produkTable th:nth-child(2),
 #produkTable td:nth-child(2) {
   padding-left: 12px;
@@ -2031,7 +1982,6 @@ input[type="number"]::-webkit-inner-spin-button {
   padding-left: 0;
 }
 
-/* ensure badges in tables stick to the left, not centered */
 .compact-table .badge,
 .prediction-table .badge,
 #prediksiTable .badge {
@@ -2248,14 +2198,12 @@ input[type="number"]::-webkit-inner-spin-button {
   border: 0.5px solid rgba(255,255,255,0.1) !important;
 }
 
-/* Monitoring card styles */
 .monitoring-card {
   border-radius: 20px !important;
   padding: 24px 32px !important;
   background: var(--card-bg);
 }
 
-/* Monitoring table specific styling */
 .monitoring-table thead th {
   text-transform: uppercase;
   font-weight: 600;
@@ -2276,21 +2224,16 @@ input[type="number"]::-webkit-inner-spin-button {
   background: #f8fafc;
 }
 
-/* Ensure badges reflect entry/exit semantics */
 .monitoring-table .bs { background: rgba(16,185,129,0.12); color: #047857; border: 1px solid rgba(16,185,129,0.16); }
 .monitoring-table .bd { background: rgba(239,68,68,0.08); color: #b91c1c; border: 1px solid rgba(239,68,68,0.12); }
-
-/* Product cell tweaks for monitoring */
 .monitoring-table .product-cell { min-width: 0; display: flex; align-items: center; gap: 12px; }
 
-/* Cashflow specific card */
 .cashflow-card {
   border-radius: 20px !important;
   padding: 24px !important;
   box-shadow: 0 6px 18px rgba(16,24,40,0.04);
 }
 
-/* unify compact table hover and header style to match Semua Produk */
 .compact-table thead th {
   text-transform: uppercase;
   font-weight: 600;
@@ -2303,7 +2246,6 @@ input[type="number"]::-webkit-inner-spin-button {
   background: #f8fafc;
 }
 
-/* Dashboard specific cards and grids */
 .dashboard-card {
   border-radius: 20px !important;
   padding: 24px !important;
@@ -2318,7 +2260,6 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .dashboard-fullwidth { width: 100%; }
 
-/* Ensure product image column centers */
 .compact-table td:first-child { text-align: center; padding-left: 0; }
 
 
